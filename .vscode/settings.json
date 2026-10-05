@@ -1,0 +1,6 @@
+{
+  "dotnet.defaultSolution": "ItmoBot.sln",
+  "dotnet.backgroundAnalysis.analyzerDiagnosticsScope": "fullSolution",
+  "dotnet.backgroundAnalysis.compilerDiagnosticsScope": "fullSolution",
+  "editor.renderValidationDecorations": "on"
+}

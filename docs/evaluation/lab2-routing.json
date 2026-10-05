@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "evaluation_context": {
+    "now": "2026-10-12T09:00:00+03:00",
+    "timezone": "Europe/Moscow"
+  },
+  "cases": [
+    {
+      "id": "weather_1",
+      "query": "Какая сейчас погода в Санкт-Петербурге?",
+      "expected_action": "get_weather",
+      "expected_arguments": {"city": "Санкт-Петербург"}
+    },
+    {
+      "id": "weather_2",
+      "query": "Нужен ли сегодня зонт в Казани?",
+      "expected_action": "get_weather",
+      "expected_arguments": {"city": "Казань"}
+    },
+    {
+      "id": "weather_3",
+      "query": "Сколько сейчас градусов в Тбилиси, Грузия?",
+      "expected_action": "get_weather",
+      "expected_arguments": {"city": "Тбилиси, Грузия"}
+    },
+    {
+      "id": "schedule_1",
+      "query": "Какие занятия у меня сегодня?",
+      "expected_action": "get_schedule",
+      "expected_arguments": {"date": "2026-10-12"}
+    },
+    {
+      "id": "schedule_2",
+      "query": "Покажи расписание на завтра.",
+      "expected_action": "get_schedule",
+      "expected_arguments": {"date": "2026-10-13"}
+    },
+    {
+      "id": "schedule_3",
+      "query": "Есть ли у меня пары в ближайшее воскресенье?",
+      "expected_action": "get_schedule",
+      "expected_arguments": {"date": "2026-10-18"}
+    },
+    {
+      "id": "reminder_1",
+      "query": "Напомни завтра в 18:30 отправить отчёт.",
+      "expected_action": "add_reminder",
+      "expected_arguments": {
+        "text": "отправить отчёт",
+        "remind_at": "2026-10-13T18:30:00+03:00"
+      }
+    },
+    {
+      "id": "reminder_2",
+      "query": "Напомни 15 октября в 09:00 проверить расписание.",
+      "expected_action": "add_reminder",
+      "expected_arguments": {
+        "text": "проверить расписание",
+        "remind_at": "2026-10-15T09:00:00+03:00"
+      }
+    },
+    {
+      "id": "reminder_3",
+      "query": "Через два часа напомни сделать перерыв.",
+      "expected_action": "add_reminder",
+      "expected_arguments": {
+        "text": "сделать перерыв",
+        "remind_at": "2026-10-12T11:00:00+03:00"
+      }
+    },
+    {
+      "id": "respond_1",
+      "query": "Кратко объясни разницу между списком и кортежем в Python.",
+      "expected_action": "respond",
+      "expected_arguments": {}
+    },
+    {
+      "id": "respond_2",
+      "query": "Переведи на английский: лабораторная работа завершена.",
+      "expected_action": "respond",
+      "expected_arguments": {}
+    },
+    {
+      "id": "clarify_1",
+      "query": "Напомни вечером про лабораторную.",
+      "expected_action": "clarify",
+      "expected_arguments": {}
+    }
+  ]
+}

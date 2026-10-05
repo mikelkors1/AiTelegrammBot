@@ -1,0 +1,66 @@
+name: Проверка шаблона
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Статический анализ C#
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+      - name: Восстановление зависимостей
+        run: dotnet restore ItmoBot.sln --locked-mode
+      - name: Анализаторы .NET и предупреждения компилятора
+        run: dotnet build ItmoBot.sln --configuration Release --no-restore --warnaserror -p:EnableNETAnalyzers=true
+      - name: Проверка форматирования
+        run: dotnet format whitespace ItmoBot.sln --verify-no-changes --no-restore
+      - name: Проверка правил стиля C#
+        run: dotnet format style ItmoBot.sln --verify-no-changes --no-restore --severity warn
+
+  tests:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+      - run: dotnet restore --locked-mode
+      - run: dotnet build --no-restore
+      - run: dotnet test --no-build
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_DB: bot_test
+          POSTGRES_USER: bot_test
+          POSTGRES_PASSWORD: test-only-password
+        ports: ['55432:5432']
+        options: >-
+          --health-cmd "pg_isready -U bot_test -d bot_test"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet restore --locked-mode
+      - run: dotnet test --filter Category=Integration
+        env:
+          RUN_INTEGRATION: '1'
+      - run: docker build -t itmo-bot-test .

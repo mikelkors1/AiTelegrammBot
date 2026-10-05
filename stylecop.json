@@ -1,0 +1,7 @@
+{
+  "settings": {
+    "maintainabilityRules": {
+      "topLevelTypes": ["class", "interface", "struct", "enum", "delegate"]
+    }
+  }
+}

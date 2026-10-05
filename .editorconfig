@@ -1,0 +1,39 @@
+root = true
+
+[*.cs]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+csharp_prefer_braces = true:error
+csharp_style_allow_embedded_statements_on_same_line_experimental = false:error
+csharp_style_expression_bodied_methods = false:error
+csharp_style_expression_bodied_local_functions = false:error
+csharp_style_expression_bodied_properties = false:error
+csharp_style_expression_bodied_accessors = false:error
+csharp_preserve_single_line_statements = false
+csharp_preserve_single_line_blocks = false
+dotnet_diagnostic.IDE0011.severity = error
+dotnet_diagnostic.IDE0022.severity = error
+dotnet_diagnostic.IDE0025.severity = error
+dotnet_diagnostic.IDE0027.severity = error
+dotnet_diagnostic.IDE0061.severity = error
+dotnet_diagnostic.IDE0055.severity = error
+
+# Включаем только согласованные правила StyleCop.
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.DocumentationRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.LayoutRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.MaintainabilityRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.NamingRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.OrderingRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.ReadabilityRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.SpacingRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.SpecialRules.severity = none
+
+# Одна самостоятельная сущность в файле; вложенные ResultTypes допустимы.
+dotnet_diagnostic.SA1402.severity = error
+# Скобки и тела операторов не размещаются в одну строку.
+dotnet_diagnostic.SA1500.severity = error
+dotnet_diagnostic.SA1501.severity = error
+dotnet_diagnostic.SA1503.severity = error

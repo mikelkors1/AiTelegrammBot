@@ -1,0 +1,15 @@
+**
+!Dockerfile
+!global.json
+!Directory.Build.props
+!.editorconfig
+!stylecop.json
+!app/
+!app/**
+**/__pycache__/
+**/*.pyc
+**/.env*
+**/*.pem
+**/id_*
+**/bin/
+**/obj/
