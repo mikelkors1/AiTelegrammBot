@@ -2,7 +2,7 @@
   <img src="docs/assets/nerdy-ai-github-cover.png" alt="Обложка учебного Telegram-бота" width="600">
 </p>
 
-# Учебный Telegram-бот: C# / .NET 10 + PostgreSQL
+# Telegram-бот: C# / .NET 10 + PostgreSQL
 
 Привет! 👋 Добро пожаловать в проект учебного Telegram-бота с языковой моделью.
 Здесь мы создаём помощника для учёбы и перевода, сохраняем историю диалогов
