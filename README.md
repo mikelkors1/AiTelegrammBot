@@ -120,7 +120,7 @@ bash scripts/start.sh --setup-only
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start.ps1 --setup-only
 ```
 
-Откройте `ItmoBot.sln` и выберите проект `app/ItmoBot.csproj`. Рабочий каталог при отладке — корень репозитория, чтобы приложение находило `.env`. В VS Code можно использовать конфигурацию `C#: ItmoBot` из `.vscode/launch.json`.
+Откройте `ItmoBot.sln` и выберите проект `app/ItmoBot.csproj`. Рабочий каталог при отладке — корень репозитория, чтобы приложение находило `.env`.
 
 Нарушения согласованного стиля диагностируются как ошибки при редактировании:
 отсутствие скобок у `if` и циклов, однострочные блоки, тела методов и свойств
@@ -129,11 +129,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start.ps1 --setup-
 ко всем C#-проектам через `Directory.Build.props`; правила находятся в `.editorconfig`
 и `stylecop.json`.
 
-В VS Code откройте корень проекта и установите рекомендованное расширение
-**C# Dev Kit**. `.vscode/settings.json` включает фоновый анализ всего решения
-и подчёркивание диагностик. После первого открытия дождитесь восстановления
-NuGet-пакетов и загрузки решения; команды lint для подсветки не нужны.
-Если проект уже был открыт, выполните **Developer: Reload Window**.
 В Rider и Visual Studio включите анализаторы Roslyn в настройках IDE,
 если они ранее были отключены; правила уровня `error` заданы в самом проекте.
 
