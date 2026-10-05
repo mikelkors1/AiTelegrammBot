@@ -1,0 +1,23 @@
+name: Commit messages
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  commitlint:
+    name: Conventional Commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate commit messages
+        uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: commitlint.config.mjs
+          failOnErrors: true
+          failOnWarnings: true
