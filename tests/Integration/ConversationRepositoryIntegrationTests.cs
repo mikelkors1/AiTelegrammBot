@@ -231,6 +231,84 @@ public sealed class ConversationRepositoryIntegrationTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(act);
     }
 
+    [PostgresFact]
+    [Trait("Category", "Integration")]
+    public async Task LoadingPrunesOldAttemptsAndMessagesWithoutChangingOtherChatsOrSettings()
+    {
+        // Arrange
+        await using var storage = await StorageAsync();
+        var repository = storage.CreateRepository();
+        var chat = new ChatId(42);
+        Value(await repository.SetModeAsync(chat, AssistantMode.Translate, CancellationToken.None));
+        Value(await repository.SetTemperatureAsync(chat, new Temperature(0.7m), CancellationToken.None));
+        await SeedAttemptsAsync(storage, chat, 102, mixedStatuses: true);
+        await TurnAsync(storage, new ChatId(43), "Другой запрос", "Другой ответ");
+
+        // Act
+        var snapshot = Value(await repository.LoadAsync(chat, CancellationToken.None));
+
+        // Assert
+        Assert.Equal(AssistantMode.Translate, snapshot.State.Mode);
+        Assert.Equal(new Temperature(0.7m), snapshot.State.Temperature);
+        Assert.Equal(68, snapshot.History.Count);
+        Assert.Equal("request-3", snapshot.History[0].Content.Value);
+        Assert.Equal("answer-102", snapshot.History[^1].Content.Value);
+        await using var count = storage.Source.CreateCommand("SELECT count(*) FROM conversation_turns WHERE chat_id = 42");
+        Assert.Equal(100L, await count.ExecuteScalarAsync());
+        await using var messages = storage.Source.CreateCommand("SELECT count(*) FROM conversation_messages m JOIN conversation_turns t ON t.turn_id = m.turn_id WHERE t.chat_id = 42");
+        Assert.Equal(134L, await messages.ExecuteScalarAsync());
+        Assert.Equal(2, Value(await repository.LoadAsync(new ChatId(43), CancellationToken.None)).History.Count);
+    }
+
+    [PostgresFact]
+    [Trait("Category", "Integration")]
+    public async Task BeginningTurnBoundsPendingAttemptsAndKeepsNewTurnCompletable()
+    {
+        // Arrange
+        await using var storage = await StorageAsync();
+        var repository = storage.CreateRepository();
+        var chat = new ChatId(42);
+        Value(await repository.LoadAsync(chat, CancellationToken.None));
+        await SeedAttemptsAsync(storage, chat, 100, mixedStatuses: false);
+        await using var oldest = storage.Source.CreateCommand("SELECT turn_id FROM conversation_turns WHERE chat_id = 42 ORDER BY sequence LIMIT 1");
+        var oldestId = new ConversationTurnId((Guid)(await oldest.ExecuteScalarAsync())!);
+
+        // Act
+        var turn = Value(await repository.BeginTurnAsync(chat, new LlmText("Новый запрос"), CancellationToken.None));
+        Value(await repository.CompleteTurnAsync(chat, turn.Id, new LlmText("Новый ответ"), CancellationToken.None));
+
+        // Assert
+        await using var count = storage.Source.CreateCommand("SELECT count(*) FROM conversation_turns WHERE chat_id = 42");
+        Assert.Equal(100L, await count.ExecuteScalarAsync());
+        await using var messages = storage.Source.CreateCommand("SELECT count(*) FROM conversation_messages");
+        Assert.Equal(101L, await messages.ExecuteScalarAsync());
+        Assert.Equal(new[] { "Новый запрос", "Новый ответ" }, Value(await repository.LoadAsync(chat, CancellationToken.None)).History.Select(m => m.Content.Value));
+        var late = Assert.IsType<ConversationResult<ConversationTurnStatus>.Failure>(await repository.CompleteTurnAsync(chat, oldestId, new LlmText("Поздний ответ"), CancellationToken.None));
+        Assert.Equal(ErrorCode.ConversationTurnNotFound, late.Error.Code);
+    }
+
+    private async Task SeedAttemptsAsync(PostgresTestScope storage, ChatId chatId, int count, bool mixedStatuses)
+    {
+        await using var command = storage.Source.CreateCommand("""
+            INSERT INTO conversation_turns(turn_id, chat_id, revision, status)
+            SELECT md5(@chat::text || '-' || n::text)::uuid, @chat, n,
+                CASE WHEN NOT @mixed THEN 'pending'
+                     WHEN n % 3 = 0 THEN 'succeeded'
+                     WHEN n % 3 = 1 THEN 'failed' ELSE 'pending' END
+            FROM generate_series(1, @count) n ORDER BY n;
+            INSERT INTO conversation_messages(turn_id, role, content)
+            SELECT turn_id, 'user', 'request-' || revision::text
+            FROM conversation_turns WHERE chat_id = @chat;
+            INSERT INTO conversation_messages(turn_id, role, content)
+            SELECT turn_id, 'assistant', 'answer-' || revision::text
+            FROM conversation_turns WHERE chat_id = @chat AND status = 'succeeded';
+            """);
+        command.Parameters.AddWithValue("chat", chatId.Value);
+        command.Parameters.AddWithValue("count", count);
+        command.Parameters.AddWithValue("mixed", mixedStatuses);
+        await command.ExecuteNonQueryAsync();
+    }
+
     private async Task<PostgresTestScope> StorageAsync()
     {
         var storage = new PostgresTestScope();

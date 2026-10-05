@@ -7,6 +7,7 @@ namespace ItmoBot.Infrastructure.PostgreSql.Contracts;
 
 public interface IConversationTurnStore
 {
+    Task PruneAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ChatId chatId, CancellationToken cancellationToken);
     Task<ConversationTurnId> BeginAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ConversationState state, CancellationToken cancellationToken);
     Task<StoredConversationTurn?> ReadLockedAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ChatId chatId, ConversationTurnId turnId, CancellationToken cancellationToken);
     Task SetStatusAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ConversationTurnId turnId, ConversationTurnStatus status, CancellationToken cancellationToken);

@@ -19,6 +19,7 @@ public sealed class PostgresConversationRepository(
         return executor.ExecuteAsync<ConversationSnapshot>(async (connection, transaction, token) =>
         {
             var state = await stateStore.LoadLockedAsync(connection, transaction, chatId, token);
+            await turnStore.PruneAsync(connection, transaction, chatId, token);
             var history = await historyStore.ReadAsync(connection, transaction, chatId, token);
             return new ConversationResult<ConversationSnapshot>.Success(new ConversationSnapshot(state, history));
         }, cancellationToken);
@@ -58,6 +59,7 @@ public sealed class PostgresConversationRepository(
             var state = await stateStore.LoadLockedAsync(connection, transaction, chatId, token);
             var turnId = await turnStore.BeginAsync(connection, transaction, state, token);
             await historyStore.AppendAsync(connection, transaction, turnId, new LlmMessage(LlmMessageRole.User, userText), token);
+            await turnStore.PruneAsync(connection, transaction, chatId, token);
             return new ConversationResult<ConversationTurn>.Success(new ConversationTurn(turnId, state));
         }, cancellationToken);
     }

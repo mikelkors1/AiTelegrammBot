@@ -7,6 +7,24 @@ namespace ItmoBot.Infrastructure.PostgreSql.Conversations;
 
 public sealed class ConversationTurnStore : IConversationTurnStore
 {
+    private const int RetainedTurnCount = 100;
+
+    public async Task PruneAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ChatId chatId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            DELETE FROM conversation_turns
+            WHERE chat_id = @chat AND turn_id IN (
+                SELECT turn_id FROM conversation_turns
+                WHERE chat_id = @chat
+                ORDER BY sequence DESC
+                OFFSET @retained
+            )
+            """, connection, transaction);
+        command.Parameters.AddWithValue("chat", chatId.Value);
+        command.Parameters.AddWithValue("retained", RetainedTurnCount);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<ConversationTurnId> BeginAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ConversationState state, CancellationToken cancellationToken)
     {
         var turnId = new ConversationTurnId(Guid.NewGuid());
