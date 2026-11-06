@@ -1,7 +1,7 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.ResultTypes;
+using ItmoBot.Application.Storage;
 using ItmoBot.Infrastructure.PostgreSql.Contracts;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Results;
 using Npgsql;
 
 namespace ItmoBot.Infrastructure.PostgreSql.Migrations;
@@ -9,10 +9,10 @@ namespace ItmoBot.Infrastructure.PostgreSql.Migrations;
 public sealed class PostgresDatabaseMigrator(
     NpgsqlDataSource source,
     ISqlMigrationCatalog catalog,
-    IPostgresErrorMapper errorMapper,
+    PostgresErrorMapper errorMapper,
     ILogger logger) : IDatabaseMigrator
 {
-    public async Task<DatabaseMigrationResult> ApplyAsync(CancellationToken cancellationToken)
+    public async Task<Result<int>> ApplyAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         try
@@ -33,11 +33,11 @@ public sealed class PostgresDatabaseMigrator(
                 ? new AppError(ErrorCode.DatabaseMigrationFailed, "Не удалось прочитать встроенные миграции приложения.")
                 : errorMapper.Map(error);
             logger.LogWarning("Миграция БД завершилась ошибкой {Code}.", mapped.Code);
-            return new DatabaseMigrationResult.Failure(mapped);
+            return new Result<int>.Failure(mapped);
         }
     }
 
-    private async Task<DatabaseMigrationResult> ApplyCoreAsync(CancellationToken cancellationToken)
+    private async Task<Result<int>> ApplyCoreAsync(CancellationToken cancellationToken)
     {
         var migrations = catalog.Read();
         await using var connection = await source.OpenConnectionAsync(cancellationToken);
@@ -68,7 +68,7 @@ public sealed class PostgresDatabaseMigrator(
 
         await transaction.CommitAsync(cancellationToken);
         logger.LogInformation("Миграции БД завершены: применено {Count}.", count);
-        return new DatabaseMigrationResult.Success(count);
+        return new Result<int>.Success(count);
     }
 
     private async Task InitializeLedgerAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken cancellationToken)
@@ -110,9 +110,9 @@ public sealed class PostgresDatabaseMigrator(
         await record.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private DatabaseMigrationResult Mismatch()
+    private Result<int> Mismatch()
     {
-        return new DatabaseMigrationResult.Failure(new AppError(ErrorCode.DatabaseMigrationMismatch,
+        return new Result<int>.Failure(new AppError(ErrorCode.DatabaseMigrationMismatch,
             "История миграций не соответствует этой версии приложения. Проверьте версии и контрольные суммы; данные не удалялись."));
     }
 }

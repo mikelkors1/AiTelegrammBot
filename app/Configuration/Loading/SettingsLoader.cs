@@ -1,39 +1,38 @@
 using System.Collections;
-using ItmoBot.Application.ValueObjects;
+using ItmoBot.Configuration.Contracts;
 using ItmoBot.Configuration.Models;
-using ItmoBot.Configuration.ResultTypes;
-using ItmoBot.Configuration.ValueObjects;
+using ItmoBot.Configuration.Secrets;
 using ItmoBot.Shared.Errors;
 using ItmoBot.Shared.Exceptions;
-using ItmoBot.Configuration.Contracts;
-using ItmoBot.Shared.ValueObjects;
+using ItmoBot.Shared.Results;
+using ItmoBot.Validation;
 
 namespace ItmoBot.Configuration.Loading;
 
-public sealed class SettingsLoader(IEnvironmentFileReader environmentFileReader) : ISettingsLoader
+public sealed class SettingsLoader(IEnvironmentFileReader environmentFileReader)
 {
-    public SettingsLoadResult Load(string envFile = ".env", IReadOnlyDictionary<string, string>? environment = null)
+    public Result<Settings> Load(string envFile = ".env", IReadOnlyDictionary<string, string>? environment = null)
     {
         try
         {
             return LoadCore(envFile, environment);
         }
-        catch (ValueObjectValidationException error)
+        catch (InputValidationException error)
         {
-            return new SettingsLoadResult.Failure(new AppError(error.Code, error.Message));
+            return new Result<Settings>.Failure(new AppError(error.Code, error.Message));
         }
     }
 
-    private SettingsLoadResult LoadCore(string envFile, IReadOnlyDictionary<string, string>? environment)
+    private Result<Settings> LoadCore(string envFile, IReadOnlyDictionary<string, string>? environment)
     {
-        var read = environmentFileReader.Read(envFile);
+        Result<IReadOnlyDictionary<string, string>> read = environmentFileReader.Read(envFile);
 
-        if (read is EnvironmentReadResult.Failure readFailure)
+        if (read is Result<IReadOnlyDictionary<string, string>>.Failure readFailure)
         {
-            return new SettingsLoadResult.Failure(readFailure.Error);
+            return new Result<Settings>.Failure(readFailure.Error);
         }
 
-        var values = MergeEnvironmentValues(((EnvironmentReadResult.Success)read).Values, environment);
+        var values = MergeEnvironmentValues(((Result<IReadOnlyDictionary<string, string>>.Success)read).Value, environment);
         return CreateSettings(values);
     }
 
@@ -61,45 +60,76 @@ public sealed class SettingsLoader(IEnvironmentFileReader environmentFileReader)
         return values;
     }
 
-    private SettingsLoadResult CreateSettings(IReadOnlyDictionary<string, string> values)
+    private Result<Settings> CreateSettings(IReadOnlyDictionary<string, string> values)
     {
         var token = new TelegramBotToken(GetValue(values, "BOT_TOKEN"));
         var password = new SecretValue(GetValue(values, "POSTGRES_PASSWORD"));
         var proxy = ParseProxy(GetValue(values, "TELEGRAM_PROXY_URL"));
-        var postgresPort = ParsePort(GetValue(values, "POSTGRES_PORT", "5432"), "POSTGRES_PORT");
-        var healthPort = ParsePort(GetValue(values, "HEALTH_PORT", "8080"), "HEALTH_PORT");
+        int postgresPort = ParsePort(GetValue(values, "POSTGRES_PORT", "5432"), "POSTGRES_PORT");
+        int healthPort = ParsePort(GetValue(values, "HEALTH_PORT", "8080"), "HEALTH_PORT");
         var level = ParseLogLevel(GetValue(values, "LOG_LEVEL", "INFO"));
 
         if (level == LogLevel.None)
         {
-            return new SettingsLoadResult.Failure(new AppError(
+            return new Result<Settings>.Failure(new AppError(
                 ErrorCode.InvalidConfiguration, "LOG_LEVEL: используйте DEBUG, INFO, WARNING, ERROR или CRITICAL."));
         }
 
-        return new SettingsLoadResult.Success(new Settings(
+        return new Result<Settings>.Success(new Settings(
             token,
             password,
             proxy,
-            new PostgresHost(GetDatabaseValue(values, "POSTGRES_HOST", "127.0.0.1")),
+            ConfigurationChecks.PostgresHost(GetDatabaseValue(values, "POSTGRES_HOST", "127.0.0.1")),
             postgresPort,
-            new DatabaseName(GetDatabaseValue(values, "POSTGRES_DB", "bot")),
-            new DatabaseUser(GetDatabaseValue(values, "POSTGRES_USER", "bot")),
+            ConfigurationChecks.DatabaseName(GetDatabaseValue(values, "POSTGRES_DB", "bot")),
+            ConfigurationChecks.DatabaseUser(GetDatabaseValue(values, "POSTGRES_USER", "bot")),
             level,
             healthPort,
-            CreateLlmSettings(values)));
+            CreateLlmSettings(values),
+            CreateMcpSettings(values)));
+    }
+
+    private McpSettings CreateMcpSettings(IReadOnlyDictionary<string, string> values)
+    {
+        var path = values.TryGetValue("MCP_SERVER_PATH", out var configured)
+            ? configured
+            : Path.Combine("mcp", "bin", "Debug", "net10.0", "ItmoBot.Mcp.dll");
+        string serverPath = ConfigurationChecks.McpServerPath(path);
+        var sourcePath = values.TryGetValue("SCHEDULE_FILE", out var source)
+            ? source
+            : Path.Combine(Path.GetDirectoryName(serverPath)!, "Data", "schedule.json");
+        var timezone = values.TryGetValue("SCHEDULE_TIMEZONE", out var zone) ? zone : "Europe/Moscow";
+        return new McpSettings(serverPath,
+            ConfigurationChecks.McpTimeout(ParsePositiveInteger(values, "MCP_TIMEOUT_SECONDS", "15")),
+            new ScheduleSettings(ConfigurationChecks.ScheduleSourcePath(sourcePath), ConfigurationChecks.IanaTimeZone(timezone)),
+            new WeatherHttpSettings(ConfigurationChecks.WeatherHttpTimeout(ParsePositiveInteger(values, "WEATHER_HTTP_TIMEOUT_SECONDS", "5")),
+                ConfigurationChecks.WeatherHttpAttempts(ParsePositiveInteger(values, "WEATHER_HTTP_MAX_ATTEMPTS", "2"))));
     }
 
     private LlmSettings CreateLlmSettings(IReadOnlyDictionary<string, string> values)
     {
         return new LlmSettings(
-            new LlmApiAddress(GetValue(values, "LLM_API_BASE_URL")),
+            ConfigurationChecks.LlmApiAddress(GetValue(values, "LLM_API_BASE_URL")),
             new LlmApiKey(GetValue(values, "OPENROUTER_API_KEY")),
-            new ModelName(GetValue(values, "LLM_MODEL")),
-            new LlmRequestTimeout(ParsePositiveInteger(values, "LLM_TIMEOUT_SECONDS", "60")),
-            new TokenLimit(ParsePositiveInteger(values, "LLM_MAX_OUTPUT_TOKENS", "2048")),
-            new TokenLimit(ParsePositiveInteger(values, "HISTORY_MAX_TOKENS", "8192")),
-            new HistoryMessageLimit(ParsePositiveInteger(values, "HISTORY_MAX_MESSAGES", "24")),
-            new LlmRetryWindow(ParsePositiveInteger(values, "LLM_RETRY_WINDOW_SECONDS", "300")));
+            RequestChecks.ModelName(GetValue(values, "LLM_MODEL")),
+            ConfigurationChecks.LlmRequestTimeout(ParsePositiveInteger(values, "LLM_TIMEOUT_SECONDS", "60")),
+            RequestChecks.TokenLimit(ParsePositiveInteger(values, "LLM_MAX_OUTPUT_TOKENS", "2048")),
+            RequestChecks.TokenLimit(ParsePositiveInteger(values, "HISTORY_MAX_TOKENS", "32768")),
+            RequestChecks.HistoryMessageLimit(ParsePositiveInteger(values, "HISTORY_MAX_MESSAGES", "24")),
+            RequestChecks.LlmRetryWindow(ParsePositiveInteger(values, "LLM_RETRY_WINDOW_SECONDS", "300")),
+            ParseStructuredOutputMode(GetValue(values, "LLM_STRUCTURED_OUTPUT_MODE", "json_schema")));
+    }
+
+    private LlmStructuredOutputMode ParseStructuredOutputMode(string value)
+    {
+        return value switch
+        {
+            "json_schema" => LlmStructuredOutputMode.JsonSchema,
+            "json_object" => LlmStructuredOutputMode.JsonObject,
+            "tool_compatible_json" => LlmStructuredOutputMode.ToolCompatibleJson,
+            _ => throw new InputValidationException(ErrorCode.InvalidConfiguration,
+                "LLM_STRUCTURED_OUTPUT_MODE: используйте json_schema, json_object или tool_compatible_json."),
+        };
     }
 
     private int ParsePositiveInteger(IReadOnlyDictionary<string, string> values, string key, string fallback)
@@ -107,7 +137,7 @@ public sealed class SettingsLoader(IEnvironmentFileReader environmentFileReader)
         var text = values.TryGetValue(key, out var configured) ? configured : fallback;
         if (!int.TryParse(text, out var value) || value <= 0)
         {
-            throw new ValueObjectValidationException(ErrorCode.InvalidConfiguration,
+            throw new InputValidationException(ErrorCode.InvalidConfiguration,
                 $"{key}: укажите положительное целое число.");
         }
 
@@ -148,14 +178,14 @@ public sealed class SettingsLoader(IEnvironmentFileReader environmentFileReader)
         return values.TryGetValue(key, out var value) ? value : fallback;
     }
 
-    private PortNumber ParsePort(string text, string key)
+    private int ParsePort(string text, string key)
     {
         if (!int.TryParse(text, out var value) || value is < 1 or > 65535)
         {
-            throw new ValueObjectValidationException(ErrorCode.InvalidPort,
+            throw new InputValidationException(ErrorCode.InvalidPort,
                 $"{key}: нужен номер порта от 1 до 65535.");
         }
 
-        return new PortNumber(value);
+        return ConfigurationChecks.PortNumber(value);
     }
 }

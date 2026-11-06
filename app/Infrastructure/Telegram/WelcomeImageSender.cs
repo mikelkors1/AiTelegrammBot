@@ -1,30 +1,30 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.ResultTypes;
-using ItmoBot.Application.ValueObjects;
+using ItmoBot.Application.Commands;
+using ItmoBot.Application.Messaging;
 using ItmoBot.Shared.Errors;
 using ItmoBot.Shared.Exceptions;
-using ItmoBot.Application.Models;
+using ItmoBot.Shared.Results;
+using ItmoBot.Validation;
 
 namespace ItmoBot.Infrastructure.Telegram;
 
-public sealed class WelcomeImageSender(ITelegramGateway telegram, IBotMenu menu) : IWelcomeImageSender
+public sealed class WelcomeImageSender(ITelegramGateway telegram, BotMenu menu)
 {
-    public async Task<TelegramSendResult> SendAsync(ChatId chatId, LlmText caption, CancellationToken cancellationToken)
+    public async Task<Result<int>> SendAsync(long chatId, string caption, CancellationToken cancellationToken)
     {
         using var photo = typeof(WelcomeImageSender).Assembly.GetManifestResourceStream("ItmoBot.Telegram.Welcome.png");
         if (photo is null)
         {
-            return new TelegramSendResult.Failure(new AppError(ErrorCode.UnexpectedFailure, "Изображение приветствия недоступно."));
+            return new Result<int>.Failure(new AppError(ErrorCode.UnexpectedFailure, "Изображение приветствия недоступно."));
         }
 
         try
         {
             return await telegram.SendPhotoAsync(chatId, photo, cancellationToken,
-                new TelegramCaption(caption.Value), menu.GetKeyboard(BotMenuPage.Main));
+                TelegramChecks.TelegramCaption(caption), menu.GetKeyboard(BotMenuPage.Main));
         }
-        catch (ValueObjectValidationException error)
+        catch (InputValidationException error)
         {
-            return new TelegramSendResult.Failure(new AppError(error.Code, error.Message));
+            return new Result<int>.Failure(new AppError(error.Code, error.Message));
         }
     }
 }

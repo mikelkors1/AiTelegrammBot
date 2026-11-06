@@ -1,16 +1,16 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using ItmoBot.Application.Contracts;
-using ItmoBot.Tools.Contracts;
+using ItmoBot.Infrastructure.Logging;
 using ItmoBot.Shared.Errors;
-using ItmoBot.Tools.ResultTypes;
+using ItmoBot.Shared.Results;
+using ItmoBot.Tools.Contracts;
 
 namespace ItmoBot.Tools;
 
 public sealed class ProcessRunner : IProcessRunner
 {
-    public async Task<CommandExecutionResult> RunAsync(
-        string executable, string[] arguments, string description, ISecretRedactor redactor,
+    public async Task<Result> RunAsync(
+        string executable, string[] arguments, string description, SecretRedactor redactor,
         IReadOnlyDictionary<string, string>? environment = null, bool quiet = false, bool interactive = false)
     {
         var info = new ProcessStartInfo(executable)
@@ -37,7 +37,7 @@ public sealed class ProcessRunner : IProcessRunner
             using var process = Process.Start(info);
             if (process is null)
             {
-                return new CommandExecutionResult.Failure(new AppError(
+                return new Result.Failure(new AppError(
                     ErrorCode.ProcessUnavailable, $"{description}: не удалось создать процесс."));
             }
 
@@ -58,15 +58,15 @@ public sealed class ProcessRunner : IProcessRunner
             if (process.ExitCode != 0)
             {
                 var advice = quiet ? "Проверьте установку и запуск программы." : "Проверьте вывод выше.";
-                return new CommandExecutionResult.Failure(new AppError(
+                return new Result.Failure(new AppError(
                     ErrorCode.ProcessFailed, $"{description}: команда завершилась с кодом {process.ExitCode}. {advice}"));
             }
 
-            return new CommandExecutionResult.Success();
+            return new Result.Success();
         }
         catch (Exception error) when (error is Win32Exception or IOException or UnauthorizedAccessException)
         {
-            return new CommandExecutionResult.Failure(new AppError(
+            return new Result.Failure(new AppError(
                 ErrorCode.ProcessUnavailable, $"{description}: программа недоступна. Проверьте установку и PATH."));
         }
     }

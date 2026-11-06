@@ -1,25 +1,25 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Configuration.Contracts;
-using ItmoBot.Tools.Contracts;
 using System.Security.Cryptography;
 using System.Text;
-using ItmoBot.Application.ResultTypes;
-using ItmoBot.Configuration.ResultTypes;
+using ItmoBot.Configuration.Contracts;
+using ItmoBot.Configuration.Loading;
+using ItmoBot.Configuration.Models;
+using ItmoBot.Infrastructure.Health;
+using ItmoBot.Infrastructure.Logging;
+using ItmoBot.Infrastructure.PostgreSql;
 using ItmoBot.Shared.Errors;
-using ItmoBot.Tools.ResultTypes;
+using ItmoBot.Shared.Results;
+using ItmoBot.Tools.Contracts;
 
 namespace ItmoBot.Tools;
 
 public sealed class LocalDevelopmentRunner(
-    IEnvironmentPreparer environmentPreparer,
-    ISettingsLoader settingsLoader,
+    EnvironmentPreparer environmentPreparer,
+    SettingsLoader settingsLoader,
     IEnvironmentFileReader environmentFileReader,
     IProcessRunner processRunner,
-    IDatabaseFactory databaseFactory,
-    IReadinessChecker checker,
-    ISecretRedactorFactory redactorFactory) : ILocalDevelopmentRunner
+    ReadinessChecker checker)
 {
-    public async Task<LocalDevelopmentResult> RunAsync(string[] args)
+    public async Task<Result> RunAsync(string[] args)
     {
         var root = Directory.GetCurrentDirectory();
         if (!File.Exists(Path.Combine(root, "ItmoBot.sln")))
@@ -38,55 +38,55 @@ public sealed class LocalDevelopmentRunner(
 
         if (action == "up")
         {
-            var prepared = environmentPreparer.Prepare();
-            if (prepared is EnvironmentPreparationResult.Failure preparationFailure)
+            Result prepared = environmentPreparer.Prepare();
+            if (prepared is Result.Failure preparationFailure)
             {
-                return new LocalDevelopmentResult.Failure(preparationFailure.Error);
+                return new Result.Failure(preparationFailure.Error);
             }
         }
 
-        var loaded = settingsLoader.Load();
-        if (loaded is SettingsLoadResult.Failure settingsFailure)
+        Result<Settings> loaded = settingsLoader.Load();
+        if (loaded is Result<Settings>.Failure settingsFailure)
         {
-            return new LocalDevelopmentResult.Failure(settingsFailure.Error);
+            return new Result.Failure(settingsFailure.Error);
         }
 
-        var settings = ((SettingsLoadResult.Success)loaded).Settings;
-        var redactor = redactorFactory.Create(settings);
+        var settings = ((Result<Settings>.Success)loaded).Value;
+        var redactor = new SecretRedactor(settings);
         if (action == "health")
         {
             var readiness = await checker.CheckAsync(settings.HealthPort);
-            if (readiness is ReadinessCheckResult.Failure readinessFailure)
+            if (readiness is Result.Failure readinessFailure)
             {
-                return new LocalDevelopmentResult.Failure(readinessFailure.Error);
+                return new Result.Failure(readinessFailure.Error);
             }
 
             Console.WriteLine("Приложение готово: polling работает, PostgreSQL отвечает на SELECT 1.");
-            return new LocalDevelopmentResult.Success();
+            return new Result.Success();
         }
 
-        var docker = await processRunner.RunAsync("docker", ["info"], "Проверка Docker Desktop/Engine", redactor, quiet: true);
-        if (docker is CommandExecutionResult.Failure dockerFailure)
+        Result docker = await processRunner.RunAsync("docker", ["info"], "Проверка Docker Desktop/Engine", redactor, quiet: true);
+        if (docker is Result.Failure dockerFailure)
         {
-            return new LocalDevelopmentResult.Failure(dockerFailure.Error);
+            return new Result.Failure(dockerFailure.Error);
         }
 
-        var composeVersion = await processRunner.RunAsync("docker", ["compose", "version"], "Проверка Docker Compose v2", redactor);
-        if (composeVersion is CommandExecutionResult.Failure composeFailure)
+        Result composeVersion = await processRunner.RunAsync("docker", ["compose", "version"], "Проверка Docker Compose v2", redactor);
+        if (composeVersion is Result.Failure composeFailure)
         {
-            return new LocalDevelopmentResult.Failure(composeFailure.Error);
+            return new Result.Failure(composeFailure.Error);
         }
 
         var project = "itmo-local-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(root)))[..10].ToLowerInvariant();
         string[] compose = ["compose", "--project-name", project, "--project-directory", root,
             "--env-file", Path.Combine(root, ".env"), "-f", "compose.yaml", "-f", "compose.local.yaml"];
-        var read = environmentFileReader.Read(".env");
-        if (read is EnvironmentReadResult.Failure readFailure)
+        Result<IReadOnlyDictionary<string, string>> read = environmentFileReader.Read(".env");
+        if (read is Result<IReadOnlyDictionary<string, string>>.Failure readFailure)
         {
-            return new LocalDevelopmentResult.Failure(readFailure.Error);
+            return new Result.Failure(readFailure.Error);
         }
 
-        var environment = new Dictionary<string, string>(((EnvironmentReadResult.Success)read).Values);
+        var environment = new Dictionary<string, string>(((Result<IReadOnlyDictionary<string, string>>.Success)read).Value);
         foreach (var key in environment.Keys.ToArray())
         {
             if (Environment.GetEnvironmentVariable(key) is { } value)
@@ -106,25 +106,25 @@ public sealed class LocalDevelopmentRunner(
             return Map(await processRunner.RunAsync("docker", [.. compose, .. command], "Управление локальной БД", redactor, environment));
         }
 
-        if (settings.PostgresHost.Value is not ("127.0.0.1" or "localhost"))
+        if (settings.PostgresHost is not ("127.0.0.1" or "localhost"))
         {
             return Failure(ErrorCode.InvalidConfiguration, "Для локального запуска POSTGRES_HOST должен быть 127.0.0.1.");
         }
 
         Console.WriteLine("Запускаем PostgreSQL и ждём готовности…");
-        var started = await processRunner.RunAsync("docker", [.. compose, "up", "-d", "--wait", "--wait-timeout", "90", "db"],
+        Result started = await processRunner.RunAsync("docker", [.. compose, "up", "-d", "--wait", "--wait-timeout", "90", "db"],
             "Запуск PostgreSQL: проверьте порт и доступ к Docker Hub", redactor, environment);
-        if (started is CommandExecutionResult.Failure startFailure)
+        if (started is Result.Failure startFailure)
         {
-            return new LocalDevelopmentResult.Failure(startFailure.Error);
+            return new Result.Failure(startFailure.Error);
         }
 
-        await using (var database = databaseFactory.Create(settings))
+        await using (var database = new Database(settings))
         {
             var checkedResult = await database.CheckAsync(CancellationToken.None);
-            if (checkedResult is DatabaseCheckResult.Failure databaseFailure)
+            if (checkedResult is Result.Failure databaseFailure)
             {
-                return new LocalDevelopmentResult.Failure(databaseFailure.Error);
+                return new Result.Failure(databaseFailure.Error);
             }
         }
 
@@ -132,7 +132,7 @@ public sealed class LocalDevelopmentRunner(
         if (args.Contains("--setup-only"))
         {
             Console.WriteLine("Откройте ItmoBot.sln в IDE. Запуск: dotnet run --project app.");
-            return new LocalDevelopmentResult.Success();
+            return new Result.Success();
         }
 
         return Map(await processRunner.RunAsync("dotnet",
@@ -140,18 +140,18 @@ public sealed class LocalDevelopmentRunner(
             "Запуск бота", redactor, interactive: true));
     }
 
-    private LocalDevelopmentResult Failure(ErrorCode code, string message)
+    private Result Failure(ErrorCode code, string message)
     {
-        return new LocalDevelopmentResult.Failure(new AppError(code, message));
+        return new Result.Failure(new AppError(code, message));
     }
 
-    private LocalDevelopmentResult Map(CommandExecutionResult result)
+    private Result Map(Result result)
     {
-        if (result is CommandExecutionResult.Failure failure)
+        if (result is Result.Failure failure)
         {
-            return new LocalDevelopmentResult.Failure(failure.Error);
+            return new Result.Failure(failure.Error);
         }
 
-        return new LocalDevelopmentResult.Success();
+        return new Result.Success();
     }
 }

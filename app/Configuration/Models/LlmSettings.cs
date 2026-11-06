@@ -1,5 +1,4 @@
-using ItmoBot.Application.ValueObjects;
-using ItmoBot.Configuration.ValueObjects;
+using ItmoBot.Configuration.Secrets;
 using ItmoBot.Shared.Errors;
 using ItmoBot.Shared.Exceptions;
 
@@ -7,16 +6,23 @@ namespace ItmoBot.Configuration.Models;
 
 public sealed class LlmSettings
 {
-    public LlmSettings(LlmApiAddress apiAddress, LlmApiKey apiKey, ModelName model,
-        LlmRequestTimeout timeout, TokenLimit maxOutputTokens,
-        TokenLimit contextTokenLimit, HistoryMessageLimit historyMessageLimit, LlmRetryWindow retryWindow)
+    public LlmSettings(Uri apiAddress, LlmApiKey apiKey, string model,
+        TimeSpan timeout, int maxOutputTokens,
+        int contextTokenLimit, int historyMessageLimit, TimeSpan retryWindow,
+        LlmStructuredOutputMode structuredOutputMode = LlmStructuredOutputMode.JsonSchema)
     {
-        if (maxOutputTokens.Value >= contextTokenLimit.Value)
+        if (maxOutputTokens >= contextTokenLimit)
         {
-            throw new ValueObjectValidationException(ErrorCode.InvalidConfiguration,
+            throw new InputValidationException(ErrorCode.InvalidConfiguration,
                 "LLM_MAX_OUTPUT_TOKENS должен быть меньше HISTORY_MAX_TOKENS, чтобы оставалось место для входного контекста.");
         }
 
+        if (!Enum.IsDefined(structuredOutputMode))
+        {
+            throw new InputValidationException(ErrorCode.InvalidConfiguration, "Неизвестный режим структурированного ответа.");
+        }
+
+        StructuredOutputMode = structuredOutputMode;
         ApiAddress = apiAddress;
         ApiKey = apiKey;
         Model = model;
@@ -27,11 +33,11 @@ public sealed class LlmSettings
         RetryWindow = retryWindow;
     }
 
-    public LlmApiAddress ApiAddress
+    public Uri ApiAddress
     {
         get;
     }
-    public LlmRetryWindow RetryWindow
+    public TimeSpan RetryWindow
     {
         get;
     }
@@ -39,24 +45,29 @@ public sealed class LlmSettings
     {
         get;
     }
-    public ModelName Model
+    public string Model
     {
         get;
     }
-    public LlmRequestTimeout Timeout
+    public TimeSpan Timeout
     {
         get;
     }
-    public TokenLimit MaxOutputTokens
+    public int MaxOutputTokens
     {
         get;
     }
-    public TokenLimit ContextTokenLimit
+    public int ContextTokenLimit
     {
         get;
     }
-    public HistoryMessageLimit HistoryMessageLimit
+    public int HistoryMessageLimit
     {
         get;
     }
+    public LlmStructuredOutputMode StructuredOutputMode
+    {
+        get;
+    }
+
 }

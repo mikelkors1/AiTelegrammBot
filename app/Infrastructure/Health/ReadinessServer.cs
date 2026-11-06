@@ -1,8 +1,8 @@
-using ItmoBot.Infrastructure.Health.Contracts;
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.ResultTypes;
+using ItmoBot.Application.Health;
+using ItmoBot.Application.Storage;
+using ItmoBot.Infrastructure.Health.ResultTypes;
 using ItmoBot.Shared.Errors;
-using ItmoBot.Shared.ValueObjects;
+using ItmoBot.Shared.Results;
 
 namespace ItmoBot.Infrastructure.Health;
 
@@ -12,11 +12,11 @@ public sealed class ReadinessServer : IReadinessServer
     private readonly WebApplication server;
     private readonly ILogger? logger;
 
-    public ReadinessServer(IDatabase database, PortNumber port, IHealthServerFactory serverFactory, ILogger? logger = null)
+    public ReadinessServer(IDatabase database, int port, ILogger? logger = null)
     {
         this.logger = logger;
         state = new HealthState(database);
-        server = serverFactory.Create(state, port);
+        server = CreateServer(state, port);
     }
 
     public CancellationToken Stopping
@@ -27,17 +27,17 @@ public sealed class ReadinessServer : IReadinessServer
         }
     }
 
-    public async Task<ReadinessServerStartResult> StartAsync(CancellationToken cancellationToken)
+    public async Task<Result> StartAsync(CancellationToken cancellationToken)
     {
         try
         {
             await server.StartAsync(cancellationToken);
-            return new ReadinessServerStartResult.Success();
+            return new Result.Success();
         }
         catch (Exception error) when (error is IOException or InvalidOperationException)
         {
             logger?.LogWarning(error, "Не удалось запустить служебный HTTP-сервер.");
-            return new ReadinessServerStartResult.Failure(new AppError(
+            return new Result.Failure(new AppError(
                 ErrorCode.HealthEndpointUnavailable,
                 "Не удалось запустить служебный HTTP-сервер. Проверьте, что HEALTH_PORT свободен."));
         }
@@ -62,5 +62,31 @@ public sealed class ReadinessServer : IReadinessServer
     public ValueTask DisposeAsync()
     {
         return server.DisposeAsync();
+    }
+
+    public static WebApplication CreateServer(HealthState state, int port)
+    {
+        var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { Args = [] });
+        builder.Logging.ClearProviders();
+        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+        var server = builder.Build();
+        server.MapGet("/health", async (CancellationToken cancellationToken) =>
+        {
+            var result = await state.CheckAsync(cancellationToken);
+            var report = result switch
+            {
+                HealthEvaluationResult.Success success => success.Report,
+                HealthEvaluationResult.Failure failure => failure.Report,
+                _ => throw new InvalidOperationException("Неизвестный результат readiness."),
+            };
+            var body = new Dictionary<string, string>
+            {
+                ["status"] = report.IsReady ? "ok" : "not_ready",
+                ["database"] = report.DatabaseAvailable ? "ok" : "unavailable",
+                ["polling"] = report.PollingRunning ? "running" : "stopped",
+            };
+            return Results.Json(body, statusCode: report.IsReady ? 200 : 503);
+        });
+        return server;
     }
 }

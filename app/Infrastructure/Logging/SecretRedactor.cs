@@ -1,10 +1,9 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Configuration.Models;
 using System.Text.RegularExpressions;
+using ItmoBot.Configuration.Models;
 
 namespace ItmoBot.Infrastructure.Logging;
 
-public sealed class SecretRedactor : ISecretRedactor
+public sealed class SecretRedactor
 {
     private readonly string[] secrets;
     public SecretRedactor(Settings settings)

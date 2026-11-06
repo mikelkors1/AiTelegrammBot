@@ -1,14 +1,14 @@
-using ItmoBot.Configuration.Contracts;
 using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
-using ItmoBot.Configuration.ResultTypes;
+using ItmoBot.Configuration.Contracts;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Results;
 
 namespace ItmoBot.Configuration.Loading;
 
 public sealed class EnvironmentFileReader : IEnvironmentFileReader
 {
-    public EnvironmentReadResult Read(string path)
+    public Result<IReadOnlyDictionary<string, string>> Read(string path)
     {
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
         try
@@ -85,16 +85,16 @@ public sealed class EnvironmentFileReader : IEnvironmentFileReader
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            return new EnvironmentReadResult.Failure(new AppError(
+            return new Result<IReadOnlyDictionary<string, string>>.Failure(new AppError(
                 ErrorCode.EnvironmentFileUnavailable, "Не удалось прочитать env-файл. Проверьте путь и права доступа."));
         }
 
-        return new EnvironmentReadResult.Success(new ReadOnlyDictionary<string, string>(values));
+        return new Result<IReadOnlyDictionary<string, string>>.Success(new ReadOnlyDictionary<string, string>(values));
     }
 
-    private EnvironmentReadResult InvalidLine(int number, string description)
+    private Result<IReadOnlyDictionary<string, string>> InvalidLine(int number, string description)
     {
-        return new EnvironmentReadResult.Failure(new AppError(
+        return new Result<IReadOnlyDictionary<string, string>>.Failure(new AppError(
             ErrorCode.EnvironmentFileInvalid, $"ENV: строка {number}: {description}"));
     }
 }

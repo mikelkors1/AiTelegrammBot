@@ -10,10 +10,9 @@ public sealed class ApplicationComposition(Settings settings)
         builder.Services.AddSingleton(settings);
         new LoggingRegistration(settings).Register(builder.Logging, builder.Services);
         new InfrastructureRegistration(settings).Register(builder.Services);
-        new ApplicationRegistration().Register(builder.Services);
-        new ContextRegistration(settings.Llm).Register(builder.Services);
-        new DialogueRegistration(settings.Llm).Register(builder.Services);
-        new HostingRegistration().Register(builder.Services);
+        new ApplicationRegistration(settings.Llm).Register(builder.Services);
+        builder.Services.AddSingleton<BotHost>();
+        builder.Services.AddSingleton<ApplicationRunner>();
         ConfigureContainerValidation(builder);
     }
 

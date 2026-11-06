@@ -1,6 +1,5 @@
-using ItmoBot.Application.Models;
-using ItmoBot.Application.ValueObjects;
+using ItmoBot.Application.Conversations;
 
 namespace ItmoBot.Infrastructure.PostgreSql.Conversations;
 
-public sealed record class StoredConversationTurn(ConversationRevision Revision, ConversationTurnStatus Status);
+public sealed record class StoredConversationTurn(long Revision, ConversationTurnStatus Status);

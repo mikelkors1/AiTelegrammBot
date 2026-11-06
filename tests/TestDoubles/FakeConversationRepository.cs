@@ -1,15 +1,15 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.Models;
-using ItmoBot.Application.ResultTypes;
-using ItmoBot.Application.ValueObjects;
+using ItmoBot.Application.Conversations;
+using ItmoBot.Application.Llm;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Results;
+using ItmoBot.Validation;
 
 namespace ItmoBot.Tests.TestDoubles;
 
 internal sealed class FakeConversationRepository : IConversationRepository
 {
-    public Dictionary<ChatId, ConversationState> States { get; } = [];
-    public Dictionary<ConversationTurnId, TestStoredTurn> Turns { get; } = [];
+    public Dictionary<long, ConversationState> States { get; } = [];
+    public Dictionary<Guid, TestStoredTurn> Turns { get; } = [];
     public AppError? LoadError
     {
         get; set;
@@ -31,25 +31,25 @@ internal sealed class FakeConversationRepository : IConversationRepository
         get; private set;
     }
 
-    public Task<ConversationResult<ConversationSnapshot>> LoadAsync(ChatId chatId, CancellationToken cancellationToken)
+    public Task<Result<ConversationSnapshot>> LoadAsync(long chatId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (LoadError is not null)
         {
-            return Task.FromResult<ConversationResult<ConversationSnapshot>>(new ConversationResult<ConversationSnapshot>.Failure(LoadError));
+            return Task.FromResult<Result<ConversationSnapshot>>(new Result<ConversationSnapshot>.Failure(LoadError));
         }
 
         var history = Turns.Values.Where(turn => turn.Turn.State.ChatId == chatId && turn.Status == ConversationTurnStatus.Succeeded)
             .SelectMany(turn => new[] { new LlmMessage(LlmMessageRole.User, turn.User), new LlmMessage(LlmMessageRole.Assistant, turn.Assistant!) }).ToArray();
-        return Task.FromResult<ConversationResult<ConversationSnapshot>>(new ConversationResult<ConversationSnapshot>.Success(new ConversationSnapshot(State(chatId), Array.AsReadOnly(history))));
+        return Task.FromResult<Result<ConversationSnapshot>>(new Result<ConversationSnapshot>.Success(new ConversationSnapshot(State(chatId), Array.AsReadOnly(history))));
     }
 
-    public Task<ConversationResult<ConversationState>> SetModeAsync(ChatId chatId, AssistantMode mode, CancellationToken cancellationToken)
+    public Task<Result<ConversationState>> SetModeAsync(long chatId, AssistantMode mode, CancellationToken cancellationToken)
     {
         return ClearAsync(chatId, mode, cancellationToken);
     }
 
-    public Task<ConversationResult<ConversationState>> SetTemperatureAsync(ChatId chatId, Temperature temperature, CancellationToken cancellationToken)
+    public Task<Result<ConversationState>> SetTemperatureAsync(long chatId, decimal temperature, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var changed = State(chatId) with
@@ -57,61 +57,61 @@ internal sealed class FakeConversationRepository : IConversationRepository
             Temperature = temperature
         };
         States[chatId] = changed;
-        return Task.FromResult<ConversationResult<ConversationState>>(new ConversationResult<ConversationState>.Success(changed));
+        return Task.FromResult<Result<ConversationState>>(new Result<ConversationState>.Success(changed));
     }
 
-    public Task<ConversationResult<ConversationState>> ResetAsync(ChatId chatId, CancellationToken cancellationToken)
+    public Task<Result<ConversationState>> ResetAsync(long chatId, CancellationToken cancellationToken)
     {
         return ClearAsync(chatId, State(chatId).Mode, cancellationToken);
     }
 
-    public Task<ConversationResult<ConversationTurn>> BeginTurnAsync(ChatId chatId, LlmText userText, CancellationToken cancellationToken)
+    public Task<Result<ConversationTurn>> BeginTurnAsync(long chatId, string userText, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         BeginCalls++;
         if (BeginError is not null)
         {
-            return Task.FromResult<ConversationResult<ConversationTurn>>(new ConversationResult<ConversationTurn>.Failure(BeginError));
+            return Task.FromResult<Result<ConversationTurn>>(new Result<ConversationTurn>.Failure(BeginError));
         }
 
-        var turn = new ConversationTurn(new ConversationTurnId(Guid.NewGuid()), State(chatId));
+        var turn = new ConversationTurn(RequestChecks.ConversationTurnId(Guid.NewGuid()), State(chatId));
         Turns.Add(turn.Id, new TestStoredTurn(turn, userText, null, ConversationTurnStatus.Pending));
-        return Task.FromResult<ConversationResult<ConversationTurn>>(new ConversationResult<ConversationTurn>.Success(turn));
+        return Task.FromResult<Result<ConversationTurn>>(new Result<ConversationTurn>.Success(turn));
     }
 
-    public Task<ConversationResult<ConversationTurnStatus>> CompleteTurnAsync(ChatId chatId, ConversationTurnId turnId, LlmText assistantText, CancellationToken cancellationToken)
+    public Task<Result<ConversationTurnStatus>> CompleteTurnAsync(long chatId, Guid turnId, string assistantText, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (CompleteError is not null)
         {
-            return Task.FromResult<ConversationResult<ConversationTurnStatus>>(new ConversationResult<ConversationTurnStatus>.Failure(CompleteError));
+            return Task.FromResult<Result<ConversationTurnStatus>>(new Result<ConversationTurnStatus>.Failure(CompleteError));
         }
 
         return FinishAsync(chatId, turnId, assistantText, cancellationToken);
     }
 
-    public Task<ConversationResult<ConversationTurnStatus>> FailTurnAsync(ChatId chatId, ConversationTurnId turnId, CancellationToken cancellationToken)
+    public Task<Result<ConversationTurnStatus>> FailTurnAsync(long chatId, Guid turnId, CancellationToken cancellationToken)
     {
         FailedCalls++;
         return FinishAsync(chatId, turnId, null, cancellationToken);
     }
 
-    private ConversationState State(ChatId chatId)
+    private ConversationState State(long chatId)
     {
         if (!States.TryGetValue(chatId, out var state))
         {
-            state = new ConversationState(chatId, AssistantMode.Study, new Temperature(0.3m), ConversationRevision.Zero);
+            state = new ConversationState(chatId, AssistantMode.Study, RequestChecks.Temperature(0.3m), RequestChecks.ConversationRevision(0));
             States.Add(chatId, state);
         }
 
         return state;
     }
 
-    private Task<ConversationResult<ConversationState>> ClearAsync(ChatId chatId, AssistantMode mode, CancellationToken cancellationToken)
+    private Task<Result<ConversationState>> ClearAsync(long chatId, AssistantMode mode, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var state = State(chatId);
-        foreach (var id in Turns.Where(entry => entry.Value.Turn.State.ChatId == chatId).Select(entry => entry.Key).ToArray())
+        foreach (Guid id in Turns.Where(entry => entry.Value.Turn.State.ChatId == chatId).Select(entry => entry.Key).ToArray())
         {
             Turns.Remove(id);
         }
@@ -119,18 +119,18 @@ internal sealed class FakeConversationRepository : IConversationRepository
         var changed = state with
         {
             Mode = mode,
-            Revision = new ConversationRevision(state.Revision.Value + 1)
+            Revision = RequestChecks.ConversationRevision(state.Revision + 1)
         };
         States[chatId] = changed;
-        return Task.FromResult<ConversationResult<ConversationState>>(new ConversationResult<ConversationState>.Success(changed));
+        return Task.FromResult<Result<ConversationState>>(new Result<ConversationState>.Success(changed));
     }
 
-    private Task<ConversationResult<ConversationTurnStatus>> FinishAsync(ChatId chatId, ConversationTurnId turnId, LlmText? assistant, CancellationToken cancellationToken)
+    private Task<Result<ConversationTurnStatus>> FinishAsync(long chatId, Guid turnId, string? assistant, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!Turns.TryGetValue(turnId, out var stored) || stored.Turn.State.ChatId != chatId)
         {
-            return Task.FromResult<ConversationResult<ConversationTurnStatus>>(new ConversationResult<ConversationTurnStatus>.Failure(new AppError(ErrorCode.ConversationTurnNotFound, "Ход удалён.")));
+            return Task.FromResult<Result<ConversationTurnStatus>>(new Result<ConversationTurnStatus>.Failure(new AppError(ErrorCode.ConversationTurnNotFound, "Ход удалён.")));
         }
 
         var status = assistant is null ? ConversationTurnStatus.Failed : ConversationTurnStatus.Succeeded;
@@ -139,6 +139,6 @@ internal sealed class FakeConversationRepository : IConversationRepository
             Assistant = assistant,
             Status = status
         };
-        return Task.FromResult<ConversationResult<ConversationTurnStatus>>(new ConversationResult<ConversationTurnStatus>.Success(status));
+        return Task.FromResult<Result<ConversationTurnStatus>>(new Result<ConversationTurnStatus>.Success(status));
     }
 }

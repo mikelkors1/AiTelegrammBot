@@ -1,14 +1,15 @@
-using ItmoBot.Application.ValueObjects;
-using ItmoBot.Application.Models;
-using ItmoBot.Application.Commands;
-using ItmoBot.Shared.Exceptions;
 using System.Net;
 using System.Text.Json;
-using ItmoBot.Application.ResultTypes;
+using ItmoBot.Application.Commands;
+using ItmoBot.Application.Messaging;
 using ItmoBot.Infrastructure.Telegram;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Exceptions;
+using ItmoBot.Shared.Results;
+using ItmoBot.Shared.Validation;
 using ItmoBot.Tests.Support;
 using ItmoBot.Tests.TestDoubles;
+using ItmoBot.Validation;
 using Xunit;
 
 namespace ItmoBot.Tests.Unit.Telegram;
@@ -16,20 +17,20 @@ namespace ItmoBot.Tests.Unit.Telegram;
 public sealed class TelegramGatewayTests
 {
     [Fact]
-    public async Task PhotoIsUploadedAsMultipartAndReturnsMessageId()
+    public async Task CallTelegram_Photo_IsUploadedAsMultipartAndReturnsMessageId()
     {
         // Arrange
         var transport = new TelegramTransport();
-        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport), new TelegramErrorMapper());
+        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport));
         using var photo = new MemoryStream(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });
 
         // Act
-        var actualResult = await gateway.SendPhotoAsync(new ChatId(42), photo, CancellationToken.None,
-            new TelegramCaption("Привет! <b>обычный текст</b>"), new BotMenu().GetKeyboard(BotMenuPage.Main));
+        Result<int> actualResult = await gateway.SendPhotoAsync(AgentChecks.ChatId(42), photo, CancellationToken.None,
+            TelegramChecks.TelegramCaption("Привет! <b>обычный текст</b>"), new BotMenu().GetKeyboard(BotMenuPage.Main));
 
         // Assert
-        var result = Assert.IsType<TelegramSendResult.Success>(actualResult);
-        Assert.Equal(new MessageId(1), result.MessageId);
+        Result<int>.Success result = Assert.IsType<Result<int>.Success>(actualResult);
+        Assert.Equal(TelegramChecks.MessageId(1), result.Value);
         Assert.Equal("sendPhoto", Assert.Single(transport.Methods));
         Assert.Equal("multipart/form-data", transport.ContentType);
         Assert.Contains("nerdy-ai-welcome.png", transport.Body!);
@@ -39,65 +40,44 @@ public sealed class TelegramGatewayTests
         Assert.DoesNotContain("parse_mode", transport.Body!);
     }
 
-    [Fact]
-    public async Task PhotoUploadFailureIsSafeAndCallerCancellationPropagates()
-    {
-        // Arrange
-        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(new TelegramTransport
-        {
-            Status = HttpStatusCode.Forbidden,
-        }), new TelegramErrorMapper());
-        using var photo = new MemoryStream(new byte[] { 1, 2, 3 });
-
-        // Act
-        var actualResult = await gateway.SendPhotoAsync(new ChatId(42), photo, CancellationToken.None);
-
-        // Assert
-        var failure = Assert.IsType<TelegramSendResult.Failure>(actualResult);
-        Assert.Equal(ErrorCode.TelegramForbidden, failure.Error.Code);
-        Assert.DoesNotContain("secret-error", failure.Message);
-        using var stopping = new CancellationTokenSource();
-        stopping.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => gateway.SendPhotoAsync(new ChatId(42), photo, stopping.Token));
-    }
 
     [Fact]
-    public async Task SendReturnsMessageIdAndMapsPersistentReplyKeyboard()
+    public async Task CallTelegram_Send_ReturnsMessageIdAndMapsPersistentReplyKeyboard()
     {
         // Arrange
         var transport = new TelegramTransport();
-        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport), new TelegramErrorMapper());
+        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport));
         var menu = new BotMenu();
 
         // Act
-        var actualResult = await gateway.SendTextAsync(new ChatId(42),
-            new TelegramText("Меню"), CancellationToken.None, keyboard: menu.GetKeyboard(BotMenuPage.Main));
+        Result<int> actualResult = await gateway.SendTextAsync(AgentChecks.ChatId(42),
+            TelegramChecks.TelegramText("Меню"), CancellationToken.None, keyboard: menu.GetKeyboard(BotMenuPage.Main));
 
         // Assert
-        var result = Assert.IsType<TelegramSendResult.Success>(actualResult);
+        Result<int>.Success result = Assert.IsType<Result<int>.Success>(actualResult);
 
-        Assert.Equal(new MessageId(1), result.MessageId);
+        Assert.Equal(TelegramChecks.MessageId(1), result.Value);
         using var json = JsonDocument.Parse(transport.Body!);
         var markup = json.RootElement.GetProperty("reply_markup");
         Assert.True(markup.GetProperty("resize_keyboard").GetBoolean());
         Assert.True(markup.GetProperty("is_persistent").GetBoolean());
         var labels = markup.GetProperty("keyboard").EnumerateArray().SelectMany(row =>
             row.EnumerateArray().Select(button => button.GetProperty("text").GetString())).ToArray();
-        Assert.Equal(menu.GetKeyboard(BotMenuPage.Main).Rows.SelectMany(row => row).Select(label => label.Value), labels);
+        Assert.Equal(menu.GetKeyboard(BotMenuPage.Main).Rows.SelectMany(row => row).Select(label => label), labels);
     }
 
     [Fact]
-    public async Task DeletionTargetsExactChatAndMessage()
+    public async Task DeleteMessageAsync_SpecifiedChatAndMessage_SendsExactIdentifiers()
     {
         // Arrange
         var transport = new TelegramTransport();
-        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport), new TelegramErrorMapper());
+        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport));
 
         // Act
-        var actualResult = await gateway.DeleteMessageAsync(new ChatId(42), new MessageId(17), CancellationToken.None);
+        var actualResult = await gateway.DeleteMessageAsync(AgentChecks.ChatId(42), TelegramChecks.MessageId(17), CancellationToken.None);
 
         // Assert
-        Assert.IsType<TelegramDeleteResult.Success>(actualResult);
+        Assert.IsType<Result.Success>(actualResult);
 
         Assert.Equal("deleteMessage", Assert.Single(transport.Methods));
         using var json = JsonDocument.Parse(transport.Body!);
@@ -105,72 +85,52 @@ public sealed class TelegramGatewayTests
         Assert.Equal(17, json.RootElement.GetProperty("message_id").GetInt32());
     }
 
-    [Fact]
-    public async Task DeletionFailureIsSafeAndCallerCancellationPropagates()
-    {
-        // Arrange
-        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(new TelegramTransport
-        {
-            Status = HttpStatusCode.Forbidden,
-        }), new TelegramErrorMapper());
-
-        // Act
-        var actualResult = await gateway.DeleteMessageAsync(new ChatId(42), new MessageId(17), CancellationToken.None);
-
-        // Assert
-        var failure = Assert.IsType<TelegramDeleteResult.Failure>(actualResult);
-        Assert.Equal(ErrorCode.TelegramForbidden, failure.Error.Code);
-        Assert.DoesNotContain("secret-error", failure.Error.Message);
-        using var stopping = new CancellationTokenSource();
-        stopping.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => gateway.DeleteMessageAsync(new ChatId(42), new MessageId(17), stopping.Token));
-    }
 
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void MessageIdRejectsInvalidValues(int value)
+    public void CallTelegram_MessageId_RejectsInvalidValues(int value)
     {
         // Arrange
 
         // Act
-        Action act = () => new MessageId(value);
+        Action act = () => TelegramChecks.MessageId(value);
 
         // Assert
-        Assert.Throws<ValueObjectValidationException>(act);
+        Assert.Throws<InputValidationException>(act);
     }
 
     [Fact]
-    public async Task ExistingWebhookReturnsFailureWithoutDeletingIt()
+    public async Task CallTelegram_ExistingWebhook_ReturnsFailureWithoutDeletingIt()
     {
         // Arrange
         var transport = new TelegramTransport();
-        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport), new TelegramErrorMapper());
+        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport));
 
         // Act
-        var actualResult = await gateway.InitializeAsync(CancellationToken.None);
+        Result<string> actualResult = await gateway.InitializeAsync(CancellationToken.None);
 
         // Assert
-        var failure = Assert.IsType<TelegramInitializationResult.Failure>(actualResult);
+        Result<string>.Failure failure = Assert.IsType<Result<string>.Failure>(actualResult);
         Assert.Equal(ErrorCode.WebhookConfigured, failure.Error.Code);
         Assert.Equal(new[] { "getMe", "getWebhookInfo" }, transport.Methods);
     }
 
     [Fact]
-    public async Task NoWebhookReturnsUsername()
+    public async Task CallTelegram_NoWebhook_ReturnsUsername()
     {
         // Arrange
-        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(new TelegramTransport { WebhookUrl = "" }), new TelegramErrorMapper());
+        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(new TelegramTransport { WebhookUrl = "" }));
 
         // Act
-        var actualResult = Assert.IsType<TelegramInitializationResult.Success>(await gateway.InitializeAsync(CancellationToken.None)).Username.Value;
+        var actualResult = Assert.IsType<Result<string>.Success>(await gateway.InitializeAsync(CancellationToken.None)).Value;
 
         // Assert
         Assert.Equal("test_bot", actualResult);
     }
 
     [Fact]
-    public async Task PollingMapsSdkUpdatesToApplicationModels()
+    public async Task CallTelegram_Polling_MapsSdkUpdatesToApplicationModels()
     {
         // Arrange
         var transport = new TelegramTransport
@@ -183,38 +143,38 @@ public sealed class TelegramGatewayTests
                 ]
                 """,
         };
-        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport), new TelegramErrorMapper());
+        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport));
 
         // Act
-        var actualResult = await gateway.GetUpdatesAsync(new UpdateOffset(10), CancellationToken.None);
+        Result<IReadOnlyList<IncomingUpdate>> actualResult = await gateway.GetUpdatesAsync(AgentChecks.UpdateOffset(10), CancellationToken.None);
 
         // Assert
-        var result = Assert.IsType<TelegramPollingResult.Success>(actualResult);
-        Assert.Equal(new IncomingUpdate(new UpdateId(17), new ChatId(42), new TelegramText("Привет")), result.Updates[0]);
-        Assert.Equal(new IncomingUpdate(new UpdateId(18), new ChatId(42), null), result.Updates[1]);
-        Assert.Equal(new IncomingUpdate(new UpdateId(19), null, null), result.Updates[2]);
+        Result<IReadOnlyList<IncomingUpdate>>.Success result = Assert.IsType<Result<IReadOnlyList<IncomingUpdate>>.Success>(actualResult);
+        Assert.Equal(new IncomingUpdate(AgentChecks.UpdateId(17), AgentChecks.ChatId(42), TelegramChecks.TelegramText("Привет")), result.Value[0]);
+        Assert.Equal(new IncomingUpdate(AgentChecks.UpdateId(18), AgentChecks.ChatId(42), null), result.Value[1]);
+        Assert.Equal(new IncomingUpdate(AgentChecks.UpdateId(19), null, null), result.Value[2]);
         using var body = JsonDocument.Parse(transport.Body!);
         Assert.Equal(10, body.RootElement.GetProperty("offset").GetInt32());
     }
 
     [Fact]
-    public async Task GroupMessagesAreIgnoredBeforeConstructingMessageValues()
+    public async Task CallTelegram_GroupMessages_AreIgnoredBeforeConstructingMessageValues()
     {
         // Arrange
         var transport = new TelegramTransport
         {
             UpdatesJson = "[{\"update_id\":17,\"message\":{\"message_id\":1,\"date\":0,\"chat\":{\"id\":-42,\"type\":\"group\"},\"text\":\"\"}}]",
         };
-        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport), new TelegramErrorMapper());
+        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport));
 
         // Act
-        var actualResult = await gateway.GetUpdatesAsync(UpdateOffset.Zero, CancellationToken.None);
+        Result<IReadOnlyList<IncomingUpdate>> actualResult = await gateway.GetUpdatesAsync(AgentChecks.UpdateOffset(0), CancellationToken.None);
 
         // Assert
-        var result = Assert.IsType<TelegramPollingResult.Success>(actualResult);
+        Result<IReadOnlyList<IncomingUpdate>>.Success result = Assert.IsType<Result<IReadOnlyList<IncomingUpdate>>.Success>(actualResult);
 
-        var update = Assert.Single(result.Updates);
-        Assert.Equal(new UpdateId(17), update.Id);
+        var update = Assert.Single(result.Value);
+        Assert.Equal(AgentChecks.UpdateId(17), update.Id);
         Assert.Null(update.ChatId);
         Assert.Null(update.Text);
     }
@@ -223,7 +183,7 @@ public sealed class TelegramGatewayTests
     [InlineData(-1, 42, "Привет", ErrorCode.InvalidUpdateId)]
     [InlineData(17, 0, "Привет", ErrorCode.InvalidChatId)]
     [InlineData(17, 42, "", ErrorCode.InvalidMessageText)]
-    public async Task InvalidIncomingValuesReturnSafeFailure(int id, long chatId, string text, ErrorCode expectedCode)
+    public async Task CallTelegram_InvalidIncomingValues_ReturnSafeFailure(int id, long chatId, string text, ErrorCode expectedCode)
     {
         // Arrange
         var transport = new TelegramTransport
@@ -243,20 +203,20 @@ public sealed class TelegramGatewayTests
                 },
             }),
         };
-        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport), new TelegramErrorMapper());
+        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport));
 
         // Act
-        var result = await gateway.GetUpdatesAsync(UpdateOffset.Zero, CancellationToken.None);
+        Result<IReadOnlyList<IncomingUpdate>> result = await gateway.GetUpdatesAsync(AgentChecks.UpdateOffset(0), CancellationToken.None);
 
         // Assert
-        var failure = Assert.IsType<TelegramPollingResult.Failure>(result);
+        Result<IReadOnlyList<IncomingUpdate>>.Failure failure = Assert.IsType<Result<IReadOnlyList<IncomingUpdate>>.Failure>(result);
         Assert.Equal(expectedCode, failure.Error.Code);
         Assert.DoesNotContain(text == "" ? "secret" : text, failure.Message);
         Assert.False(failure.Error.IsRetryable);
     }
 
     [Fact]
-    public async Task OversizedIncomingTextReturnsFailureAtAdapterBoundary()
+    public async Task CallTelegram_OversizedIncomingText_ReturnsFailureAtAdapterBoundary()
     {
         // Arrange
         var text = new string('a', 4097);
@@ -265,13 +225,13 @@ public sealed class TelegramGatewayTests
             UpdatesJson = "[{\"update_id\":17,\"message\":{\"message_id\":1,\"date\":0,\"chat\":{\"id\":42,\"type\":\"private\"},\"text\":"
                 + JsonSerializer.Serialize(text) + "}}]",
         };
-        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport), new TelegramErrorMapper());
+        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport));
 
         // Act
-        var actualResult = await gateway.GetUpdatesAsync(UpdateOffset.Zero, CancellationToken.None);
+        Result<IReadOnlyList<IncomingUpdate>> actualResult = await gateway.GetUpdatesAsync(AgentChecks.UpdateOffset(0), CancellationToken.None);
 
         // Assert
-        var failure = Assert.IsType<TelegramPollingResult.Failure>(actualResult);
+        Result<IReadOnlyList<IncomingUpdate>>.Failure failure = Assert.IsType<Result<IReadOnlyList<IncomingUpdate>>.Failure>(actualResult);
         Assert.Equal(ErrorCode.InvalidMessageText, failure.Error.Code);
         Assert.DoesNotContain(text, failure.Message);
     }
@@ -282,33 +242,33 @@ public sealed class TelegramGatewayTests
     [InlineData(HttpStatusCode.Conflict, ErrorCode.TelegramPollingConflict, false)]
     [InlineData(HttpStatusCode.TooManyRequests, ErrorCode.TelegramRateLimited, true)]
     [InlineData(HttpStatusCode.InternalServerError, ErrorCode.TelegramUnavailable, true)]
-    public async Task ApiFailuresAreClassifiedAndDoNotLeakDescriptions(HttpStatusCode status, ErrorCode code, bool retryable)
+    public async Task CallTelegram_ApiFailures_AreClassifiedAndDoNotLeakDescriptions(HttpStatusCode status, ErrorCode code, bool retryable)
     {
         // Arrange
-        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(new TelegramTransport { Status = status }), new TelegramErrorMapper());
+        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(new TelegramTransport { Status = status }));
 
         // Act
-        var actualResult = await gateway.GetUpdatesAsync(UpdateOffset.Zero, CancellationToken.None);
+        Result<IReadOnlyList<IncomingUpdate>> actualResult = await gateway.GetUpdatesAsync(AgentChecks.UpdateOffset(0), CancellationToken.None);
 
         // Assert
-        var failure = Assert.IsType<TelegramPollingResult.Failure>(actualResult);
+        Result<IReadOnlyList<IncomingUpdate>>.Failure failure = Assert.IsType<Result<IReadOnlyList<IncomingUpdate>>.Failure>(actualResult);
         Assert.Equal(code, failure.Error.Code);
         Assert.Equal(retryable, failure.Error.IsRetryable);
         Assert.DoesNotContain("secret-error", failure.Message);
     }
 
     [Fact]
-    public async Task SendPreservesTextAndDoesNotEnableParseMode()
+    public async Task CallTelegram_Send_PreservesTextAndDoesNotEnableParseMode()
     {
         // Arrange
         var transport = new TelegramTransport();
-        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport), new TelegramErrorMapper());
+        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport));
 
         // Act
-        var actualResult = await gateway.SendTextAsync(new TestValues().Chat(42), new TestValues().Text("<b>текст</b>"), CancellationToken.None);
+        Result<int> actualResult = await gateway.SendTextAsync(new TestValues().Chat(42), new TestValues().Text("<b>текст</b>"), CancellationToken.None);
 
         // Assert
-        Assert.IsType<TelegramSendResult.Success>(actualResult);
+        Assert.IsType<Result<int>.Success>(actualResult);
         using var json = JsonDocument.Parse(transport.Body!);
         Assert.Equal("<b>текст</b>", json.RootElement.GetProperty("text").GetString());
         Assert.Equal(42, json.RootElement.GetProperty("chat_id").GetInt64());
@@ -316,61 +276,102 @@ public sealed class TelegramGatewayTests
     }
 
     [Fact]
-    public async Task FormattedSendExplicitlyEnablesHtmlParseMode()
+    public async Task SendTextAsync_HtmlFormat_EnablesHtmlParseMode()
     {
         // Arrange
         var transport = new TelegramTransport();
-        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport), new TelegramErrorMapper());
+        using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(transport));
 
         // Act
-        var actualResult = await gateway.SendTextAsync(new ChatId(42),
-            new TelegramText("<pre><code>int x = 1;</code></pre>"), CancellationToken.None, TelegramTextFormat.Html);
+        Result<int> actualResult = await gateway.SendTextAsync(AgentChecks.ChatId(42),
+            TelegramChecks.TelegramText("<pre><code>int x = 1;</code></pre>"), CancellationToken.None, TelegramTextFormat.Html);
 
         // Assert
-        Assert.IsType<TelegramSendResult.Success>(actualResult);
+        Assert.IsType<Result<int>.Success>(actualResult);
         using var body = JsonDocument.Parse(transport.Body!);
         Assert.Equal("Html", body.RootElement.GetProperty("parse_mode").GetString());
         Assert.Equal("<pre><code>int x = 1;</code></pre>", body.RootElement.GetProperty("text").GetString());
     }
 
     [Fact]
-    public async Task NetworkExceptionReturnsSafeRetryableFailure()
+    public async Task CallTelegram_NetworkException_ReturnsSafeRetryableFailure()
     {
         // Arrange
         using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(new TelegramTransport
         {
             Error = new HttpRequestException("secret-network-error"),
-        }), new TelegramErrorMapper());
+        }));
 
         // Act
-        var actualResult = await gateway.SendTextAsync(
+        Result<int> actualResult = await gateway.SendTextAsync(
             new TestValues().Chat(42), new TestValues().Text("Привет"), CancellationToken.None);
 
         // Assert
-        var failure = Assert.IsType<TelegramSendResult.Failure>(actualResult);
+        Result<int>.Failure failure = Assert.IsType<Result<int>.Failure>(actualResult);
         Assert.Equal(ErrorCode.TelegramUnavailable, failure.Error.Code);
         Assert.True(failure.Error.IsRetryable);
         Assert.DoesNotContain("secret-network-error", failure.Message);
     }
 
     [Fact]
-    public async Task TimeoutReturnsRetryableErrorButCallerCancellationPropagates()
+    public async Task CallTelegram_Timeout_ReturnsRetryableErrorButCallerCancellationPropagates()
     {
         // Arrange
         using var gateway = new TelegramGateway(new TestValues().Settings(), new HttpClient(new TelegramTransport
         {
             Error = new OperationCanceledException("secret-error"),
-        }), new TelegramErrorMapper());
+        }));
 
         // Act
-        var actualResult = await gateway.InitializeAsync(CancellationToken.None);
+        Result<string> actualResult = await gateway.InitializeAsync(CancellationToken.None);
 
         // Assert
-        var failure = Assert.IsType<TelegramInitializationResult.Failure>(actualResult);
+        Result<string>.Failure failure = Assert.IsType<Result<string>.Failure>(actualResult);
         Assert.Equal(ErrorCode.TelegramTimeout, failure.Error.Code);
         Assert.True(failure.Error.IsRetryable);
         using var stopping = new CancellationTokenSource();
         stopping.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => gateway.GetUpdatesAsync(UpdateOffset.Zero, stopping.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => gateway.GetUpdatesAsync(AgentChecks.UpdateOffset(0), stopping.Token));
     }
+
+    [Theory]
+    [InlineData("photo")]
+    [InlineData("delete")]
+    [InlineData("callback")]
+    public async Task CallTelegram_RejectedOperation_ReturnsSafeErrorAndPreservesCallerCancellation(string operation)
+    {
+        // Arrange
+        using var gateway = new TelegramGateway(new TestValues().Settings(),
+            new HttpClient(new TelegramTransport { Status = HttpStatusCode.Forbidden }));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        // Act
+        var error = await RejectedOperationAsync(gateway, operation, CancellationToken.None);
+
+        // Assert
+        Assert.Equal(ErrorCode.TelegramForbidden, error.Code);
+        Assert.DoesNotContain("secret-error", error.Message);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            RejectedOperationAsync(gateway, operation, cancellation.Token));
+    }
+
+    private async Task<AppError> RejectedOperationAsync(TelegramGateway gateway, string operation, CancellationToken token)
+    {
+        using var photo = new MemoryStream(new byte[] { 1, 2, 3 });
+        object result = operation switch
+        {
+            "photo" => await gateway.SendPhotoAsync(42, photo, token),
+            "delete" => await gateway.DeleteMessageAsync(42, 17, token),
+            "callback" => await gateway.AnswerCallbackAsync("callback_101", token),
+            _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+        };
+        return result switch
+        {
+            Result<int>.Failure failure => failure.Error,
+            Result.Failure failure => failure.Error,
+            _ => throw new InvalidOperationException("Ожидался отказ Telegram."),
+        };
+    }
+
 }

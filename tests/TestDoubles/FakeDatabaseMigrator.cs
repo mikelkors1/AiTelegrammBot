@@ -1,19 +1,25 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.ResultTypes;
+using ItmoBot.Application.Storage;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Results;
 
 namespace ItmoBot.Tests.TestDoubles;
 
 internal sealed class FakeDatabaseMigrator(AppError? error = null) : IDatabaseMigrator
 {
-    public Task<DatabaseMigrationResult> ApplyAsync(CancellationToken cancellationToken)
+    public int ApplyCalls
+    {
+        get; private set;
+    }
+
+    public Task<Result<int>> ApplyAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        ApplyCalls++;
         if (error is not null)
         {
-            return Task.FromResult<DatabaseMigrationResult>(new DatabaseMigrationResult.Failure(error));
+            return Task.FromResult<Result<int>>(new Result<int>.Failure(error));
         }
 
-        return Task.FromResult<DatabaseMigrationResult>(new DatabaseMigrationResult.Success(0));
+        return Task.FromResult<Result<int>>(new Result<int>.Success(0));
     }
 }

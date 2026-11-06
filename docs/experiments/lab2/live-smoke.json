@@ -1,0 +1,90 @@
+{
+  "run_at": "2026-11-02T09:33:55.128248+00:00",
+  "model": "nvidia/nemotron-3.5-super-vl:free",
+  "output_mode": "ToolCompatibleJson",
+  "scope": "real LLM, MCP, weather HTTP and isolated PostgreSQL; no Telegram transport; not the routing experiment",
+  "checks": [
+    {
+      "id": "isolated_migrations",
+      "pass": true,
+      "detail": "dedicated temporary PostgreSQL only"
+    },
+    {
+      "id": "mcp_discovery",
+      "pass": true,
+      "detail": "3 tools, 1 resource"
+    },
+    {
+      "id": "tools_command",
+      "pass": true,
+      "detail": "discovered catalog exposed by command"
+    },
+    {
+      "id": "clarify_reminder",
+      "pass": true,
+      "detail": "result=Success; action=Clarify; tool=; audit=Succeeded; seconds=2.8"
+    },
+    {
+      "id": "clarify_reminder_why",
+      "pass": true,
+      "detail": "safe audit command"
+    },
+    {
+      "id": "prepare_reminder",
+      "pass": true,
+      "detail": "result=Success; action=Clarify; tool=add_reminder; audit=Pending; seconds=19.2"
+    },
+    {
+      "id": "prepare_reminder_why",
+      "pass": true,
+      "detail": "safe audit command"
+    },
+    {
+      "id": "no_write_before_confirmation",
+      "pass": true,
+      "detail": "reminders table count=0"
+    },
+    {
+      "id": "foreign_confirmation_rejected",
+      "pass": true,
+      "detail": "foreign identity cannot create reminder"
+    },
+    {
+      "id": "confirmed_reminder",
+      "pass": true,
+      "detail": "trusted MCP write after explicit test confirmation"
+    },
+    {
+      "id": "repeated_confirmation",
+      "pass": true,
+      "detail": "one reminder after repeated confirmation"
+    },
+    {
+      "id": "schedule",
+      "pass": true,
+      "detail": "result=Success; action=ToolCall; tool=get_schedule; audit=Succeeded; seconds=5.0"
+    },
+    {
+      "id": "schedule_why",
+      "pass": true,
+      "detail": "safe audit command"
+    },
+    {
+      "id": "weather",
+      "pass": true,
+      "detail": "result=Success; action=ToolCall; tool=get_weather; audit=Succeeded; seconds=4.5"
+    },
+    {
+      "id": "weather_why",
+      "pass": true,
+      "detail": "safe audit command"
+    }
+  ],
+  "previous_run": "live-smoke-before-reminder-rule.json",
+  "change": "Only the agent system instruction for proposing add_reminder was changed; clarification and reminder scenarios rerun. Successful weather and schedule checks retained from previous run.",
+  "automated_checks": {
+    "release_build": "passed: analyzers enabled, warnings as errors",
+    "tests_passed": 608,
+    "tests_skipped": 0
+  }
+}

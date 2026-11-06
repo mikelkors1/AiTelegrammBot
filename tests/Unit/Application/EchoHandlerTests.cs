@@ -1,9 +1,9 @@
-using ItmoBot.Application.ValueObjects;
-using ItmoBot.Application.Handlers;
-using ItmoBot.Application.ResultTypes;
+using ItmoBot.Application.Messaging;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Results;
+using ItmoBot.Shared.Validation;
 using ItmoBot.Tests.TestDoubles;
-using ItmoBot.Application.Models;
+using ItmoBot.Validation;
 using Xunit;
 
 namespace ItmoBot.Tests.Unit.Application;
@@ -15,50 +15,50 @@ public sealed class EchoHandlerTests
     [InlineData("/start")]
     [InlineData("<b>текст</b> & *слово*")]
     [InlineData("строка\nдва")]
-    public async Task EchoPreservesText(string text)
+    public async Task HandleAsync_Echo_PreservesText(string text)
     {
         // Arrange
         var telegram = new FakeTelegram();
 
         // Act
-        var result = await new EchoHandler(telegram).HandleAsync(Message(text), CancellationToken.None);
+        Result<bool> result = await new EchoHandler(telegram).HandleAsync(Message(text), CancellationToken.None);
 
         // Assert
-        Assert.True(Assert.IsType<MessageHandlingResult.Success>(result).WasHandled);
+        Assert.True(Assert.IsType<Result<bool>.Success>(result).Value);
         Assert.Equal((42L, text), Assert.Single(telegram.Sent));
     }
 
     [Fact]
-    public async Task CaptionIsIgnored()
+    public async Task HandleAsync_Caption_IsIgnored()
     {
         // Arrange
         var telegram = new FakeTelegram();
 
         // Act
-        var result = await new EchoHandler(telegram).HandleAsync(new IncomingUpdate(new UpdateId(0), new ChatId(42), null), CancellationToken.None);
+        Result<bool> result = await new EchoHandler(telegram).HandleAsync(new IncomingUpdate(AgentChecks.UpdateId(0), AgentChecks.ChatId(42), null), CancellationToken.None);
 
         // Assert
-        Assert.False(Assert.IsType<MessageHandlingResult.Success>(result).WasHandled);
+        Assert.False(Assert.IsType<Result<bool>.Success>(result).Value);
         Assert.Empty(telegram.Sent);
     }
 
     [Fact]
-    public async Task ApiFailureKeepsItsCodeAndRetryability()
+    public async Task HandleAsync_ApiFailure_KeepsItsCodeAndRetryability()
     {
         // Arrange
         var error = new AppError(ErrorCode.TelegramUnauthorized, "Telegram отклонил токен.");
         var telegram = new FakeTelegram { SendError = error };
 
         // Act
-        var result = await new EchoHandler(telegram).HandleAsync(Message("Привет"), CancellationToken.None);
+        Result<bool> result = await new EchoHandler(telegram).HandleAsync(Message("Привет"), CancellationToken.None);
 
         // Assert
-        Assert.Equal(error, Assert.IsType<MessageHandlingResult.Failure>(result).Error);
+        Assert.Equal(error, Assert.IsType<Result<bool>.Failure>(result).Error);
         Assert.Empty(telegram.Sent);
     }
 
     [Fact]
-    public async Task CallerCancellationIsNotReportedAsFailure()
+    public async Task HandleAsync_CallerCancellation_IsNotReportedAsFailure()
     {
         // Arrange
         using var stopping = new CancellationTokenSource();
@@ -76,6 +76,6 @@ public sealed class EchoHandlerTests
 
     private IncomingUpdate Message(string text)
     {
-        return new IncomingUpdate(new UpdateId(0), new ChatId(42), new TelegramText(text));
+        return new IncomingUpdate(AgentChecks.UpdateId(0), AgentChecks.ChatId(42), TelegramChecks.TelegramText(text));
     }
 }

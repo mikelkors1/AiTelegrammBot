@@ -1,5 +1,4 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.Models;
+using ItmoBot.Application.Conversations.Prompts;
 
 namespace ItmoBot.Tests.TestDoubles;
 

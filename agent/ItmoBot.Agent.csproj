@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ItmoBot.Agent</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NodaTime" Version="3.3.3" />
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+</Project>

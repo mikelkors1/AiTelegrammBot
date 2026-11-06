@@ -1,9 +1,15 @@
-using ItmoBot.Application.Contracts;
+using ItmoBot.Application.AgentLoop;
+using ItmoBot.Application.Health;
+using ItmoBot.Application.Llm;
+using ItmoBot.Application.Mcp;
+using ItmoBot.Application.Messaging;
+using ItmoBot.Application.Storage;
 using ItmoBot.Configuration.Models;
 using ItmoBot.Infrastructure.Health;
-using ItmoBot.Infrastructure.Health.Contracts;
+using ItmoBot.Infrastructure.Llm;
+using ItmoBot.Infrastructure.Mcp.Contracts;
+using ItmoBot.Infrastructure.Mcp;
 using ItmoBot.Infrastructure.Telegram;
-using ItmoBot.Infrastructure.Telegram.Contracts;
 
 namespace ItmoBot.Hosting.Composition.Registrations;
 
@@ -11,12 +17,10 @@ public sealed class InfrastructureRegistration(Settings settings)
 {
     public void Register(IServiceCollection services)
     {
-        new LlmRegistration(settings.Llm).Register(services);
+        RegisterLlm(services);
+        RegisterMcp(services);
         new PostgreSqlRegistration(settings).Register(services);
-        services.AddSingleton<IReadinessChecker, ReadinessChecker>();
-        services.AddSingleton<IHealthServerFactory, HealthServerFactory>();
-        services.AddSingleton<ITelegramHttpClientFactory, TelegramHttpClientFactory>();
-        services.AddSingleton<ITelegramErrorMapper, TelegramErrorMapper>();
+        services.AddSingleton<ReadinessChecker>();
         services.AddScoped<ITelegramGateway>(CreateTelegramGateway);
         services.AddScoped<IReadinessServer>(CreateReadinessServer);
     }
@@ -24,10 +28,7 @@ public sealed class InfrastructureRegistration(Settings settings)
     private ITelegramGateway CreateTelegramGateway(IServiceProvider provider)
     {
         return new TelegramGateway(
-            settings,
-            provider.GetRequiredService<ITelegramHttpClientFactory>().Create(settings),
-            provider.GetRequiredService<ITelegramErrorMapper>(),
-            provider.GetRequiredService<ILogger>());
+            settings, TelegramGateway.CreateHttpClient(settings), provider.GetRequiredService<ILogger>());
     }
 
     private IReadinessServer CreateReadinessServer(IServiceProvider provider)
@@ -35,7 +36,31 @@ public sealed class InfrastructureRegistration(Settings settings)
         return new ReadinessServer(
             provider.GetRequiredService<IDatabase>(),
             settings.HealthPort,
-            provider.GetRequiredService<IHealthServerFactory>(),
             provider.GetRequiredService<ILogger>());
+    }
+
+    private void RegisterLlm(IServiceCollection services)
+    {
+        services.AddSingleton(settings.Llm);
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<ILlmClient>(CreateLlmClient);
+    }
+
+    private void RegisterMcp(IServiceCollection services)
+    {
+        services.AddSingleton(settings.Mcp);
+        services.AddSingleton<IMcpTransportFactory, StdioMcpTransportFactory>();
+        services.AddSingleton<McpErrorMapper>();
+        services.AddSingleton<McpCatalogMapper>();
+        services.AddSingleton<McpCatalogReader>();
+        services.AddSingleton<IMcpClient, StdioMcpClient>();
+    }
+
+    private ILlmClient CreateLlmClient(IServiceProvider provider)
+    {
+        var singleAttempt = new OpenRouterLlmClient(
+            settings.Llm, OpenRouterLlmClient.CreateHttpClient(settings.Llm), provider.GetRequiredService<ILogger>(), provider.GetRequiredService<AgentRequestBuilder>());
+        return new RetryingLlmClient(singleAttempt, settings.Llm.RetryWindow,
+            provider.GetRequiredService<TimeProvider>(), provider.GetRequiredService<ILogger>());
     }
 }

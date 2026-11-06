@@ -1,13 +1,12 @@
-using ItmoBot.Configuration.ValueObjects;
-using ItmoBot.Shared.ValueObjects;
+using ItmoBot.Configuration.Secrets;
 
 namespace ItmoBot.Configuration.Models;
 
 public sealed class Settings
 {
     internal Settings(TelegramBotToken botToken, SecretValue postgresPassword, ProxyAddress? telegramProxy,
-        PostgresHost postgresHost, PortNumber postgresPort, DatabaseName postgresDb, DatabaseUser postgresUser,
-        LogLevel logLevel, PortNumber healthPort, LlmSettings llm)
+        string postgresHost, int postgresPort, string postgresDb, string postgresUser,
+        LogLevel logLevel, int healthPort, LlmSettings llm, McpSettings mcp)
     {
         BotToken = botToken;
         PostgresPassword = postgresPassword;
@@ -19,6 +18,12 @@ public sealed class Settings
         LogLevel = logLevel;
         HealthPort = healthPort;
         Llm = llm;
+        Mcp = mcp;
+    }
+
+    public McpSettings Mcp
+    {
+        get;
     }
 
     public LlmSettings Llm
@@ -38,19 +43,19 @@ public sealed class Settings
     {
         get;
     }
-    public PostgresHost PostgresHost
+    public string PostgresHost
     {
         get;
     }
-    public PortNumber PostgresPort
+    public int PostgresPort
     {
         get;
     }
-    public DatabaseName PostgresDb
+    public string PostgresDb
     {
         get;
     }
-    public DatabaseUser PostgresUser
+    public string PostgresUser
     {
         get;
     }
@@ -58,7 +63,7 @@ public sealed class Settings
     {
         get;
     }
-    public PortNumber HealthPort
+    public int HealthPort
     {
         get;
     }

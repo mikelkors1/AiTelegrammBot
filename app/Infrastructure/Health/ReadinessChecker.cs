@@ -1,14 +1,11 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.ResultTypes;
 using System.Net;
 using System.Text.Json;
-using ItmoBot.Infrastructure.Health.ResultTypes;
 using ItmoBot.Shared.Errors;
-using ItmoBot.Shared.ValueObjects;
+using ItmoBot.Shared.Results;
 
 namespace ItmoBot.Infrastructure.Health;
 
-public sealed class ReadinessChecker : IReadinessChecker
+public sealed class ReadinessChecker : IDisposable
 {
     private readonly HttpClient http;
 
@@ -20,20 +17,20 @@ public sealed class ReadinessChecker : IReadinessChecker
         };
     }
 
-    public async Task<ReadinessCheckResult> CheckAsync(PortNumber port, CancellationToken cancellationToken = default)
+    public async Task<Result> CheckAsync(int port, CancellationToken cancellationToken = default)
     {
         try
         {
-            using var response = await http.GetAsync($"http://127.0.0.1:{port.Value}/health", cancellationToken);
+            using var response = await http.GetAsync($"http://127.0.0.1:{port}/health", cancellationToken);
             if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
             {
-                return new ReadinessCheckResult.Failure(new AppError(
+                return new Result.Failure(new AppError(
                     ErrorCode.ApplicationNotReady, "Приложение не готово. Проверьте подключение БД и работу polling.", IsRetryable: true));
             }
 
             if (!response.IsSuccessStatusCode)
             {
-                return new ReadinessCheckResult.Failure(new AppError(
+                return new Result.Failure(new AppError(
                     ErrorCode.HealthEndpointUnavailable, "Служебный HTTP endpoint вернул ошибку."));
             }
 
@@ -42,11 +39,11 @@ public sealed class ReadinessChecker : IReadinessChecker
                 || body.GetValueOrDefault("database") != "ok"
                 || body.GetValueOrDefault("polling") != "running")
             {
-                return new ReadinessCheckResult.Failure(new AppError(
+                return new Result.Failure(new AppError(
                     ErrorCode.HealthResponseInvalid, "Служебный endpoint вернул некорректный ответ."));
             }
 
-            return new ReadinessCheckResult.Success();
+            return new Result.Success();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -54,12 +51,12 @@ public sealed class ReadinessChecker : IReadinessChecker
         }
         catch (JsonException)
         {
-            return new ReadinessCheckResult.Failure(new AppError(
+            return new Result.Failure(new AppError(
                 ErrorCode.HealthResponseInvalid, "Служебный endpoint вернул некорректный JSON."));
         }
         catch (Exception error) when (error is HttpRequestException or OperationCanceledException)
         {
-            return new ReadinessCheckResult.Failure(new AppError(
+            return new Result.Failure(new AppError(
                 ErrorCode.HealthEndpointUnavailable, "Не удалось проверить приложение. Убедитесь, что бот запущен и HEALTH_PORT указан правильно.", IsRetryable: true));
         }
     }

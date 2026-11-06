@@ -1,6 +1,6 @@
 using ItmoBot.Hosting;
-using ItmoBot.Hosting.ResultTypes;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Results;
 using Xunit;
 
 namespace ItmoBot.Tests.Unit.Hosting;
@@ -8,44 +8,44 @@ namespace ItmoBot.Tests.Unit.Hosting;
 public sealed class CommandLineParserTests
 {
     [Fact]
-    public void RecognizesCommandAndCustomEnvFile()
+    public void Parse_HealthcheckWithCustomEnvFile_ReturnsCommandAndPath()
     {
         // Arrange
 
         // Act
-        var actualResult = new CommandLineParser().Parse(["healthcheck", "--env-file", "custom.env"]);
+        Result<CommandLineOptions> actualResult = new CommandLineParser().Parse(["healthcheck", "--env-file", "custom.env"]);
 
         // Assert
-        var success = Assert.IsType<CommandLineParseResult.Success>(actualResult);
-        Assert.Equal(ApplicationCommand.Healthcheck, success.Options.Command);
-        Assert.Equal("custom.env", success.Options.EnvFile);
+        Result<CommandLineOptions>.Success success = Assert.IsType<Result<CommandLineOptions>.Success>(actualResult);
+        Assert.Equal(ApplicationCommand.Healthcheck, success.Value.Command);
+        Assert.Equal("custom.env", success.Value.EnvFile);
     }
 
     [Fact]
-    public void RecognizesMigrationCommand()
+    public void Parse_MigrationArgument_ReturnsMigrationCommand()
     {
         // Arrange
 
         // Act
-        var actualResult = new CommandLineParser().Parse(["migrate"]);
+        Result<CommandLineOptions> actualResult = new CommandLineParser().Parse(["migrate"]);
 
         // Assert
-        var success = Assert.IsType<CommandLineParseResult.Success>(actualResult);
-        Assert.Equal(ApplicationCommand.Migrate, success.Options.Command);
+        Result<CommandLineOptions>.Success success = Assert.IsType<Result<CommandLineOptions>.Success>(actualResult);
+        Assert.Equal(ApplicationCommand.Migrate, success.Value.Command);
     }
 
     [Theory]
     [InlineData("--env-file")]
     [InlineData("invalid-secret")]
-    public void InvalidArgumentsReturnSafeFailure(string arg)
+    public void Parse_InvalidArguments_ReturnSafeFailure(string arg)
     {
         // Arrange
 
         // Act
-        var actualResult = new CommandLineParser().Parse([arg]);
+        Result<CommandLineOptions> actualResult = new CommandLineParser().Parse([arg]);
 
         // Assert
-        var failure = Assert.IsType<CommandLineParseResult.Failure>(actualResult);
+        Result<CommandLineOptions>.Failure failure = Assert.IsType<Result<CommandLineOptions>.Failure>(actualResult);
         Assert.Equal(ErrorCode.InvalidArguments, failure.Error.Code);
         Assert.DoesNotContain("invalid-secret", failure.Message);
     }

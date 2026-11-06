@@ -1,14 +1,13 @@
-using ItmoBot.Application.ResultTypes;
-using ItmoBot.Infrastructure.PostgreSql.Contracts;
 using ItmoBot.Shared.Exceptions;
+using ItmoBot.Shared.Results;
 using Npgsql;
 
 namespace ItmoBot.Infrastructure.PostgreSql;
 
-public sealed class PostgresOperationExecutor(NpgsqlDataSource source, IPostgresErrorMapper errorMapper, ILogger logger) : IPostgresOperationExecutor
+public sealed class PostgresOperationExecutor(NpgsqlDataSource source, PostgresErrorMapper errorMapper, ILogger logger)
 {
-    public async Task<ConversationResult<T>> ExecuteAsync<T>(
-        Func<NpgsqlConnection, NpgsqlTransaction, CancellationToken, Task<ConversationResult<T>>> operation,
+    public async Task<Result<T>> ExecuteAsync<T>(
+        Func<NpgsqlConnection, NpgsqlTransaction, CancellationToken, Task<Result<T>>> operation,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -17,7 +16,7 @@ public sealed class PostgresOperationExecutor(NpgsqlDataSource source, IPostgres
             await using var connection = await source.OpenConnectionAsync(cancellationToken);
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
             var result = await operation(connection, transaction, cancellationToken);
-            if (result is ConversationResult<T>.Success)
+            if (result is Result<T>.Success)
             {
                 await transaction.CommitAsync(cancellationToken);
             }
@@ -33,11 +32,11 @@ public sealed class PostgresOperationExecutor(NpgsqlDataSource source, IPostgres
             throw new OperationCanceledException(cancellationToken);
         }
         catch (Exception error) when (error is NpgsqlException or TimeoutException or OperationCanceledException
-            or IOException or ValueObjectValidationException or InvalidOperationException)
+            or IOException or InputValidationException or InvalidOperationException)
         {
             var mapped = errorMapper.Map(error);
             logger.LogWarning("Операция хранилища диалога завершилась ошибкой {Code}.", mapped.Code);
-            return new ConversationResult<T>.Failure(mapped);
+            return new Result<T>.Failure(mapped);
         }
     }
 }

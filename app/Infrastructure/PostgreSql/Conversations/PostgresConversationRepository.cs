@@ -1,92 +1,88 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.Models;
-using ItmoBot.Application.ResultTypes;
-using ItmoBot.Application.ValueObjects;
-using ItmoBot.Infrastructure.PostgreSql.Contracts;
+using ItmoBot.Application.Conversations;
+using ItmoBot.Application.Llm;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Results;
 using Npgsql;
 
 namespace ItmoBot.Infrastructure.PostgreSql.Conversations;
 
 public sealed class PostgresConversationRepository(
-    IPostgresOperationExecutor executor,
-    IConversationStateStore stateStore,
-    IConversationTurnStore turnStore,
-    IConversationHistoryStore historyStore) : IConversationRepository
+    PostgresOperationExecutor executor,
+    ConversationStateStore stateStore,
+    ConversationTurnStore turnStore,
+    ConversationHistoryStore historyStore) : IConversationRepository
 {
-    public Task<ConversationResult<ConversationSnapshot>> LoadAsync(ChatId chatId, CancellationToken cancellationToken)
+    public Task<Result<ConversationSnapshot>> LoadAsync(long chatId, CancellationToken cancellationToken)
     {
         return executor.ExecuteAsync<ConversationSnapshot>(async (connection, transaction, token) =>
         {
             var state = await stateStore.LoadLockedAsync(connection, transaction, chatId, token);
-            await turnStore.PruneAsync(connection, transaction, chatId, token);
             var history = await historyStore.ReadAsync(connection, transaction, chatId, token);
-            return new ConversationResult<ConversationSnapshot>.Success(new ConversationSnapshot(state, history));
+            return new Result<ConversationSnapshot>.Success(new ConversationSnapshot(state, history));
         }, cancellationToken);
     }
 
-    public Task<ConversationResult<ConversationState>> SetModeAsync(ChatId chatId, AssistantMode mode, CancellationToken cancellationToken)
+    public Task<Result<ConversationState>> SetModeAsync(long chatId, AssistantMode mode, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!Enum.IsDefined(mode))
         {
-            return Task.FromResult<ConversationResult<ConversationState>>(new ConversationResult<ConversationState>.Failure(
+            return Task.FromResult<Result<ConversationState>>(new Result<ConversationState>.Failure(
                 new AppError(ErrorCode.InvalidConversationMode, "Выбран неизвестный режим ассистента.")));
         }
 
         return ClearAsync(chatId, mode, cancellationToken);
     }
 
-    public Task<ConversationResult<ConversationState>> SetTemperatureAsync(ChatId chatId, Temperature temperature, CancellationToken cancellationToken)
+    public Task<Result<ConversationState>> SetTemperatureAsync(long chatId, decimal temperature, CancellationToken cancellationToken)
     {
         return executor.ExecuteAsync<ConversationState>(async (connection, transaction, token) =>
         {
             var state = await stateStore.LoadLockedAsync(connection, transaction, chatId, token);
             var changed = await stateStore.SetTemperatureAsync(connection, transaction, state, temperature, token);
-            return new ConversationResult<ConversationState>.Success(changed);
+            return new Result<ConversationState>.Success(changed);
         }, cancellationToken);
     }
 
-    public Task<ConversationResult<ConversationState>> ResetAsync(ChatId chatId, CancellationToken cancellationToken)
+    public Task<Result<ConversationState>> ResetAsync(long chatId, CancellationToken cancellationToken)
     {
         return ClearAsync(chatId, null, cancellationToken);
     }
 
-    public Task<ConversationResult<ConversationTurn>> BeginTurnAsync(ChatId chatId, LlmText userText, CancellationToken cancellationToken)
+    public Task<Result<ConversationTurn>> BeginTurnAsync(long chatId, string userText, CancellationToken cancellationToken)
     {
         return executor.ExecuteAsync<ConversationTurn>(async (connection, transaction, token) =>
         {
             var state = await stateStore.LoadLockedAsync(connection, transaction, chatId, token);
-            var turnId = await turnStore.BeginAsync(connection, transaction, state, token);
+            Guid turnId = await turnStore.BeginAsync(connection, transaction, state, token);
             await historyStore.AppendAsync(connection, transaction, turnId, new LlmMessage(LlmMessageRole.User, userText), token);
-            await turnStore.PruneAsync(connection, transaction, chatId, token);
-            return new ConversationResult<ConversationTurn>.Success(new ConversationTurn(turnId, state));
+            return new Result<ConversationTurn>.Success(new ConversationTurn(turnId, state));
         }, cancellationToken);
     }
 
-    public Task<ConversationResult<ConversationTurnStatus>> CompleteTurnAsync(ChatId chatId, ConversationTurnId turnId,
-        LlmText assistantText, CancellationToken cancellationToken)
+    public Task<Result<ConversationTurnStatus>> CompleteTurnAsync(long chatId, Guid turnId,
+        string assistantText, CancellationToken cancellationToken)
     {
         return FinishTurnAsync(chatId, turnId, assistantText, cancellationToken);
     }
 
-    public Task<ConversationResult<ConversationTurnStatus>> FailTurnAsync(ChatId chatId, ConversationTurnId turnId, CancellationToken cancellationToken)
+    public Task<Result<ConversationTurnStatus>> FailTurnAsync(long chatId, Guid turnId, CancellationToken cancellationToken)
     {
         return FinishTurnAsync(chatId, turnId, null, cancellationToken);
     }
 
-    private Task<ConversationResult<ConversationState>> ClearAsync(ChatId chatId, AssistantMode? mode, CancellationToken cancellationToken)
+    private Task<Result<ConversationState>> ClearAsync(long chatId, AssistantMode? mode, CancellationToken cancellationToken)
     {
         return executor.ExecuteAsync<ConversationState>(async (connection, transaction, token) =>
         {
             var state = await stateStore.LoadLockedAsync(connection, transaction, chatId, token);
             var changed = await stateStore.ClearAsync(connection, transaction, state, mode ?? state.Mode, token);
-            return new ConversationResult<ConversationState>.Success(changed);
+            return new Result<ConversationState>.Success(changed);
         }, cancellationToken);
     }
 
-    private Task<ConversationResult<ConversationTurnStatus>> FinishTurnAsync(ChatId chatId, ConversationTurnId turnId,
-        LlmText? assistantText, CancellationToken cancellationToken)
+    private Task<Result<ConversationTurnStatus>> FinishTurnAsync(long chatId, Guid turnId,
+        string? assistantText, CancellationToken cancellationToken)
     {
         return executor.ExecuteAsync<ConversationTurnStatus>(async (connection, transaction, token) =>
         {
@@ -95,11 +91,11 @@ public sealed class PostgresConversationRepository(
             var validationError = ValidatePendingTurn(turn, state);
             if (validationError is not null)
             {
-                return new ConversationResult<ConversationTurnStatus>.Failure(validationError);
+                return new Result<ConversationTurnStatus>.Failure(validationError);
             }
 
             var status = await SaveOutcomeAsync(connection, transaction, turnId, assistantText, token);
-            return new ConversationResult<ConversationTurnStatus>.Success(status);
+            return new Result<ConversationTurnStatus>.Success(status);
         }, cancellationToken);
     }
 
@@ -124,7 +120,7 @@ public sealed class PostgresConversationRepository(
     }
 
     private async Task<ConversationTurnStatus> SaveOutcomeAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
-        ConversationTurnId turnId, LlmText? assistantText, CancellationToken cancellationToken)
+        Guid turnId, string? assistantText, CancellationToken cancellationToken)
     {
         var status = ConversationTurnStatus.Failed;
         if (assistantText is not null)

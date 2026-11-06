@@ -1,19 +1,18 @@
-using ItmoBot.Application.Models;
-using ItmoBot.Application.ValueObjects;
-using ItmoBot.Infrastructure.PostgreSql.Contracts;
+using ItmoBot.Application.Conversations;
+using ItmoBot.Validation;
 using Npgsql;
 
 namespace ItmoBot.Infrastructure.PostgreSql.Conversations;
 
-public sealed class ConversationStateStore : IConversationStateStore
+public sealed class ConversationStateStore
 {
-    public async Task<ConversationState> LoadLockedAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ChatId chatId, CancellationToken cancellationToken)
+    public async Task<ConversationState> LoadLockedAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long chatId, CancellationToken cancellationToken)
     {
         await using var insert = new NpgsqlCommand("INSERT INTO conversation_users(chat_id) VALUES (@chat) ON CONFLICT DO NOTHING", connection, transaction);
-        insert.Parameters.AddWithValue("chat", chatId.Value);
+        insert.Parameters.AddWithValue("chat", chatId);
         await insert.ExecuteNonQueryAsync(cancellationToken);
         await using var select = new NpgsqlCommand("SELECT mode, temperature, revision FROM conversation_users WHERE chat_id = @chat FOR UPDATE", connection, transaction);
-        select.Parameters.AddWithValue("chat", chatId.Value);
+        select.Parameters.AddWithValue("chat", chatId);
         await using var reader = await select.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
         {
@@ -27,15 +26,15 @@ public sealed class ConversationStateStore : IConversationStateStore
             "quiz" => AssistantMode.Quiz,
             _ => throw new InvalidOperationException("В БД сохранён неизвестный режим."),
         };
-        return new ConversationState(chatId, mode, new Temperature(reader.GetDecimal(1)), new ConversationRevision(reader.GetInt64(2)));
+        return new ConversationState(chatId, mode, RequestChecks.Temperature(reader.GetDecimal(1)), RequestChecks.ConversationRevision(reader.GetInt64(2)));
     }
 
     public async Task<ConversationState> SetTemperatureAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
-        ConversationState state, Temperature temperature, CancellationToken cancellationToken)
+        ConversationState state, decimal temperature, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("UPDATE conversation_users SET temperature = @temperature WHERE chat_id = @chat", connection, transaction);
-        command.Parameters.AddWithValue("temperature", temperature.Value);
-        command.Parameters.AddWithValue("chat", state.ChatId.Value);
+        command.Parameters.AddWithValue("temperature", temperature);
+        command.Parameters.AddWithValue("chat", state.ChatId);
         await command.ExecuteNonQueryAsync(cancellationToken);
         return state with
         {
@@ -47,16 +46,16 @@ public sealed class ConversationStateStore : IConversationStateStore
         ConversationState state, AssistantMode mode, CancellationToken cancellationToken)
     {
         await using var delete = new NpgsqlCommand("DELETE FROM conversation_turns WHERE chat_id = @chat", connection, transaction);
-        delete.Parameters.AddWithValue("chat", state.ChatId.Value);
+        delete.Parameters.AddWithValue("chat", state.ChatId);
         await delete.ExecuteNonQueryAsync(cancellationToken);
         await using var update = new NpgsqlCommand("UPDATE conversation_users SET mode = @mode, revision = revision + 1 WHERE chat_id = @chat RETURNING revision", connection, transaction);
         update.Parameters.AddWithValue("mode", mode.ToString().ToLowerInvariant());
-        update.Parameters.AddWithValue("chat", state.ChatId.Value);
+        update.Parameters.AddWithValue("chat", state.ChatId);
         var revision = (long)(await update.ExecuteScalarAsync(cancellationToken))!;
         return state with
         {
             Mode = mode,
-            Revision = new ConversationRevision(revision)
+            Revision = RequestChecks.ConversationRevision(revision)
         };
     }
 }

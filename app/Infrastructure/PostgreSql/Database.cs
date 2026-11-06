@@ -1,7 +1,7 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.ResultTypes;
+using ItmoBot.Application.Storage;
 using ItmoBot.Configuration.Models;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Results;
 using Npgsql;
 
 namespace ItmoBot.Infrastructure.PostgreSql;
@@ -15,17 +15,16 @@ public sealed class Database : IDatabase
         this.logger = logger;
         DataSource = NpgsqlDataSource.Create(new NpgsqlConnectionStringBuilder
         {
-            Host = settings.PostgresHost.Value,
-            Port = settings.PostgresPort.Value,
-            Database = settings.PostgresDb.Value,
-            Username = settings.PostgresUser.Value,
+            Host = settings.PostgresHost,
+            Port = settings.PostgresPort,
+            Database = settings.PostgresDb,
+            Username = settings.PostgresUser,
             Password = settings.PostgresPassword.Value,
             MinPoolSize = 1,
             MaxPoolSize = 5,
             Timeout = 5,
             CommandTimeout = 5,
             IncludeErrorDetail = false,
-            // This deployment uses password authentication, without Kerberos.
             GssEncryptionMode = GssEncryptionMode.Disable,
         }.ConnectionString);
     }
@@ -35,7 +34,7 @@ public sealed class Database : IDatabase
         get;
     }
 
-    public async Task<DatabaseCheckResult> CheckAsync(CancellationToken cancellationToken)
+    public async Task<Result> CheckAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -47,11 +46,11 @@ public sealed class Database : IDatabase
 
             if (await command.ExecuteScalarAsync(timeout.Token) is not int value || value != 1)
             {
-                return new DatabaseCheckResult.Failure(new AppError(
+                return new Result.Failure(new AppError(
                     ErrorCode.DatabaseUnexpectedResponse, "PostgreSQL вернул неожиданный результат SELECT 1."));
             }
 
-            return new DatabaseCheckResult.Success();
+            return new Result.Success();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -64,7 +63,7 @@ public sealed class Database : IDatabase
         catch (PostgresException error) when (error.SqlState is "28P01" or "28000")
         {
             logger?.LogWarning(error, "PostgreSQL отклонил авторизацию.");
-            return new DatabaseCheckResult.Failure(new AppError(
+            return new Result.Failure(new AppError(
                 ErrorCode.DatabaseAuthenticationFailed,
                 "PostgreSQL отклонил авторизацию. Проверьте пользователя и пароль; изменение env-файла не меняет пароль существующей роли."));
         }
@@ -73,11 +72,11 @@ public sealed class Database : IDatabase
             logger?.LogWarning(error, "Проверка PostgreSQL завершилась ошибкой.");
             if (timeout.IsCancellationRequested || error is TimeoutException)
             {
-                return new DatabaseCheckResult.Failure(new AppError(
+                return new Result.Failure(new AppError(
                     ErrorCode.DatabaseTimeout, "Истекло время ожидания PostgreSQL. Проверьте подключение к БД.", IsRetryable: true));
             }
 
-            return new DatabaseCheckResult.Failure(new AppError(
+            return new Result.Failure(new AppError(
                 ErrorCode.DatabaseUnavailable, "PostgreSQL недоступен. Проверьте адрес, порт и запуск контейнера БД.", IsRetryable: true));
         }
     }

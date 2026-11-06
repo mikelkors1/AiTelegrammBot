@@ -1,7 +1,7 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.ResultTypes;
+using ItmoBot.Application.Storage;
 using ItmoBot.Infrastructure.Health.ResultTypes;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Results;
 
 namespace ItmoBot.Infrastructure.Health;
 
@@ -19,9 +19,9 @@ public sealed class HealthState(IDatabase database)
     public async Task<HealthEvaluationResult> CheckAsync(CancellationToken cancellationToken)
     {
         var check = await database.CheckAsync(cancellationToken);
-        var report = new HealthReport(check is DatabaseCheckResult.Success,
+        var report = new HealthReport(check is Result.Success,
             PollingTask is { IsCompleted: false }, Initialized);
-        if (check is DatabaseCheckResult.Failure databaseFailure)
+        if (check is Result.Failure databaseFailure)
         {
             return new HealthEvaluationResult.Failure(databaseFailure.Error, report);
         }

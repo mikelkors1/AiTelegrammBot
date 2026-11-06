@@ -1,0 +1,39 @@
+{
+  "run_at": "2026-11-02T09:49:43.909462+00:00",
+  "model": "nvidia/nemotron-3.5-super-vl:free",
+  "timezone": "Europe/Moscow",
+  "scope": "real model, production DialogueService, MCP discovery and isolated PostgreSQL; Telegram notifications stubbed; no confirmations",
+  "results": [
+    {
+      "id": "tomorrow",
+      "query": "Напомни завтра в 18:30 проверить лабораторную.",
+      "pending_on_first_message": false,
+      "result": "Failure"
+    },
+    {
+      "id": "relative",
+      "query": "Через два часа напомни сделать перерыв.",
+      "pending_on_first_message": false,
+      "result": "Failure"
+    },
+    {
+      "id": "explicit_date",
+      "query": "Напомни 2026-11-04 в 09:00 проверить расписание.",
+      "pending_on_first_message": false,
+      "result": "Failure"
+    }
+  ],
+  "reminders_without_confirmation": 0,
+  "live_validation_status": "blocked",
+  "blocking_reason": {
+    "http_status": 429,
+    "type": "free-models-per-day",
+    "message": "Daily free-model request quota exhausted; model routing could not be evaluated."
+  },
+  "automated_checks": {
+    "passed": 23,
+    "skipped": 0,
+    "first_message_handler_shows_buttons": true,
+    "reminders_before_confirmation": 0
+  }
+}

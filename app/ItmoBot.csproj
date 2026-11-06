@@ -4,6 +4,7 @@
     <RunWorkingDirectory>$(MSBuildProjectDirectory)/..</RunWorkingDirectory>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../agent/ItmoBot.Agent.csproj" />
     <EmbeddedResource Include="Infrastructure/Telegram/Assets/nerdy-ai-welcome.png">
       <LogicalName>ItmoBot.Telegram.Welcome.png</LogicalName>
     </EmbeddedResource>
@@ -12,6 +13,10 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" Version="9.6.0" />
+    <ProjectReference Include="../mcp/ItmoBot.Mcp.csproj" ReferenceOutputAssembly="false" />
+    <PackageReference Include="ModelContextProtocol.Core" Version="2.3.0" />
+    <PackageReference Include="NodaTime" Version="3.3.3" />
     <PackageReference Include="Npgsql" Version="10.0.3" />
     <PackageReference Include="Telegram.Bot" Version="22.10.3.2" />
   </ItemGroup>

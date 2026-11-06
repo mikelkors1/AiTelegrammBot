@@ -1,14 +1,11 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.ValueObjects;
-
 namespace ItmoBot.Application.Conversations;
 
-public sealed class ConversationLock : IConversationLock
+public sealed class ConversationLock
 {
     private readonly object gate = new();
-    private readonly Dictionary<ChatId, ConversationLockEntry> entries = [];
+    private readonly Dictionary<long, ConversationLockEntry> entries = [];
 
-    public async Task<IAsyncDisposable> AcquireAsync(ChatId chatId, CancellationToken cancellationToken)
+    public async Task<IAsyncDisposable> AcquireAsync(long chatId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ConversationLockEntry entry;
@@ -35,7 +32,7 @@ public sealed class ConversationLock : IConversationLock
         }
     }
 
-    private void Release(ChatId chatId, ConversationLockEntry entry, bool acquired)
+    private void Release(long chatId, ConversationLockEntry entry, bool acquired)
     {
         lock (gate)
         {

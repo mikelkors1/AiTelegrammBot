@@ -1,4 +1,3 @@
-
 namespace ItmoBot.Tools.Contracts;
 
 public interface ISecretConsoleInput

@@ -1,7 +1,8 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Infrastructure.PostgreSql;
+using ItmoBot.Application.Conversations;
+using ItmoBot.Application.Storage;
 using ItmoBot.Infrastructure.PostgreSql.Conversations;
 using ItmoBot.Infrastructure.PostgreSql.Migrations;
+using ItmoBot.Infrastructure.PostgreSql;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 
@@ -35,13 +36,17 @@ internal sealed class PostgresTestScope : IAsyncDisposable
             new ConversationStateStore(), new ConversationTurnStore(), new ConversationHistoryStore());
     }
 
-    public NpgsqlDataSource CreateNewSource()
+    public string CreateScopedConnectionString()
     {
-        var builder = new NpgsqlConnectionStringBuilder(connectionString)
+        return new NpgsqlConnectionStringBuilder(connectionString)
         {
             SearchPath = schema,
-        };
-        return NpgsqlDataSource.Create(builder.ConnectionString);
+        }.ConnectionString;
+    }
+
+    public NpgsqlDataSource CreateNewSource()
+    {
+        return NpgsqlDataSource.Create(CreateScopedConnectionString());
     }
 
     public async ValueTask DisposeAsync()

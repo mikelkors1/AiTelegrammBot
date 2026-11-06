@@ -1,23 +1,34 @@
-using ItmoBot.Application.ResultTypes;
-using ItmoBot.Hosting.Contracts;
+using ItmoBot.Application.Mcp;
+using ItmoBot.Application.Storage;
+using ItmoBot.Application;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Results;
 
 namespace ItmoBot.Hosting;
 
-public sealed class BotHost(IBotSessionFactory sessionFactory, ILogger logger) : IBotHost
+public sealed class BotHost(IServiceScopeFactory scopeFactory, ILogger logger)
 {
-    public async Task<BotExecutionResult> RunAsync(CancellationToken cancellationToken)
+    public async Task<Result<int>> MigrateAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<IDatabaseMigrator>().ApplyAsync(cancellationToken);
+    }
+
+    public async Task<Result> RunAsync(CancellationToken cancellationToken)
     {
         try
         {
-            await using var session = await sessionFactory.CreateAsync();
-            var initialized = await session.InitializeAsync(cancellationToken);
-            if (initialized is DatabaseMigrationResult.Failure failure)
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var services = scope.ServiceProvider;
+            var application = services.GetRequiredService<IBotApplication>();
+            var migrated = await services.GetRequiredService<IDatabaseMigrator>().ApplyAsync(cancellationToken);
+            if (migrated is Result<int>.Failure failure)
             {
-                return new BotExecutionResult.Failure(failure.Error);
+                return new Result.Failure(failure.Error);
             }
 
-            return await session.Application.RunAsync(cancellationToken);
+            await services.GetRequiredService<IMcpRuntime>().InitializeAsync(cancellationToken);
+            return await application.RunAsync(cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -26,7 +37,7 @@ public sealed class BotHost(IBotSessionFactory sessionFactory, ILogger logger) :
         catch (Exception error)
         {
             logger.LogError(error, "Не удалось создать или освободить ресурсы приложения.");
-            return new BotExecutionResult.Failure(new AppError(
+            return new Result.Failure(new AppError(
                 ErrorCode.UnexpectedFailure, "Не удалось подготовить ресурсы приложения. Проверьте конфигурацию и логи."));
         }
     }

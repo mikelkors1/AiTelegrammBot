@@ -1,40 +1,39 @@
 using ItmoBot.Configuration.Contracts;
-using ItmoBot.Hosting.Contracts;
-using ItmoBot.Hosting.Composition;
 using ItmoBot.Configuration.Loading;
-using ItmoBot.Configuration.ResultTypes;
+using ItmoBot.Configuration.Models;
+using ItmoBot.Hosting.Composition;
 using ItmoBot.Hosting;
-using ItmoBot.Hosting.ResultTypes;
+using ItmoBot.Shared.Results;
 
 try
 {
-    ICommandLineParser parser = new CommandLineParser();
-    var parsed = parser.Parse(args);
+    var parser = new CommandLineParser();
+    Result<CommandLineOptions> parsed = parser.Parse(args);
 
-    if (parsed is CommandLineParseResult.Failure argumentFailure)
+    if (parsed is Result<CommandLineOptions>.Failure argumentFailure)
     {
         Console.Error.WriteLine($"{argumentFailure.Error.Code}: {argumentFailure.Message}");
         return 1;
     }
 
-    var options = ((CommandLineParseResult.Success)parsed).Options;
+    var options = ((Result<CommandLineOptions>.Success)parsed).Value;
     IEnvironmentFileReader environmentFileReader = new EnvironmentFileReader();
-    ISettingsLoader settingsLoader = new SettingsLoader(environmentFileReader);
-    var loaded = settingsLoader.Load(options.EnvFile);
+    SettingsLoader settingsLoader = new SettingsLoader(environmentFileReader);
+    Result<Settings> loaded = settingsLoader.Load(options.EnvFile);
 
-    if (loaded is SettingsLoadResult.Failure settingsFailure)
+    if (loaded is Result<Settings>.Failure settingsFailure)
     {
         Console.Error.WriteLine($"{settingsFailure.Error.Code}: {settingsFailure.Message}");
         return 1;
     }
 
-    var settings = ((SettingsLoadResult.Success)loaded).Settings;
+    var settings = ((Result<Settings>.Success)loaded).Value;
     var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { Args = [] });
     var composition = new ApplicationComposition(settings);
     composition.Configure(builder);
 
     using var host = builder.Build();
-    return await host.Services.GetRequiredService<IApplicationRunner>().RunAsync(options.Command);
+    return await host.Services.GetRequiredService<ApplicationRunner>().RunAsync(options.Command);
 }
 catch (Exception)
 {

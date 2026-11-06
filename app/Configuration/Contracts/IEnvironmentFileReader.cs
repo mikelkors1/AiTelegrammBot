@@ -1,8 +1,8 @@
-using ItmoBot.Configuration.ResultTypes;
+using ItmoBot.Shared.Results;
 
 namespace ItmoBot.Configuration.Contracts;
 
 public interface IEnvironmentFileReader
 {
-    EnvironmentReadResult Read(string path);
+    Result<IReadOnlyDictionary<string, string>> Read(string path);
 }

@@ -1,18 +1,15 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Hosting.Contracts;
-using ItmoBot.Application;
-using ItmoBot.Application.ResultTypes;
 using ItmoBot.Configuration.Models;
+using ItmoBot.Infrastructure.Health;
+using ItmoBot.Infrastructure.PostgreSql;
+using ItmoBot.Shared.Results;
 
 namespace ItmoBot.Hosting;
 
 public sealed class ApplicationRunner(
     Settings settings,
-    IBotHost botHost,
-    IDatabaseFactory databaseFactory,
-    IReadinessChecker checker,
-    IDatabaseMigrationRunner migrationRunner,
-    ILogger logger) : IApplicationRunner
+    BotHost botHost,
+    ReadinessChecker checker,
+    ILogger logger)
 {
     public async Task<int> RunAsync(ApplicationCommand command)
     {
@@ -21,7 +18,7 @@ public sealed class ApplicationRunner(
             if (command == ApplicationCommand.Healthcheck)
             {
                 var checkedResult = await checker.CheckAsync(settings.HealthPort);
-                if (checkedResult is ReadinessCheckResult.Failure healthFailure)
+                if (checkedResult is Result.Failure healthFailure)
                 {
                     Console.Error.WriteLine($"{healthFailure.Error.Code}: {healthFailure.Message}");
                     return 1;
@@ -33,9 +30,9 @@ public sealed class ApplicationRunner(
 
             if (command == ApplicationCommand.Dbcheck)
             {
-                await using var database = databaseFactory.Create(settings, logger);
+                await using var database = new Database(settings, logger);
                 var checkedResult = await database.CheckAsync(CancellationToken.None);
-                if (checkedResult is DatabaseCheckResult.Failure databaseFailure)
+                if (checkedResult is Result.Failure databaseFailure)
                 {
                     logger.LogError("{Code}: {Message}", databaseFailure.Error.Code, databaseFailure.Message);
                     return 1;
@@ -60,7 +57,7 @@ public sealed class ApplicationRunner(
             try
             {
                 var result = await botHost.RunAsync(stopping.Token);
-                if (result is BotExecutionResult.Failure failure)
+                if (result is Result.Failure failure)
                 {
                     logger.LogError("{Code}: {Message}", failure.Error.Code, failure.Message);
                     return 1;
@@ -86,14 +83,14 @@ public sealed class ApplicationRunner(
 
     private async Task<int> RunMigrationsAsync()
     {
-        var result = await migrationRunner.RunAsync(CancellationToken.None);
-        if (result is DatabaseMigrationResult.Failure failure)
+        var result = await botHost.MigrateAsync(CancellationToken.None);
+        if (result is Result<int>.Failure failure)
         {
             logger.LogError("{Code}: {Message}", failure.Error.Code, failure.Error.Message);
             return 1;
         }
 
-        Console.WriteLine($"Миграции готовы: применено {((DatabaseMigrationResult.Success)result).AppliedCount}.");
+        Console.WriteLine($"Миграции готовы: применено {((Result<int>.Success)result).Value}.");
         return 0;
     }
 

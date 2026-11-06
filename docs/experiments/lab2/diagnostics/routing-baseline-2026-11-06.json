@@ -1,0 +1,460 @@
+{
+  "status": "incomplete_runner_failure",
+  "started_at": "2026-11-06T15:04:04.9119770+00:00",
+  "dataset": "docs/evaluation/lab2-routing.json",
+  "dataset_sha256": "0A9C9F06F85E094AE42AAA3B684EA368B8F051055F5476ED676203E2A1AFDC98",
+  "evaluation_context": {
+    "now": "2026-10-12T09:00:00+03:00",
+    "timezone": "Europe/Moscow"
+  },
+  "model": "nvidia/nemotron-3.5-super-vl:free",
+  "structured_output_mode": "ToolCompatibleJson",
+  "temperature": 0.0,
+  "max_output_tokens": 2048,
+  "context_token_limit": 32768,
+  "timeout_seconds": 60,
+  "mode": "study",
+  "prompt_version": "study-v4",
+  "scope": "First routing decision using production prompts, client and discovered MCP schemas. No tool execution or reminder writes.",
+  "tool_catalog": [
+    {
+      "Name": "get_schedule",
+      "Description": "Занятия на указанную календарную дату. date — существующая дата YYYY-MM-DD. Пустой список означает отсутствие занятий.",
+      "InputSchema": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "additionalProperties": false
+      },
+      "OutputSchema": {
+        "type": "object",
+        "$defs": {
+          "lesson": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+              },
+              "end": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "location": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "start",
+              "end",
+              "title",
+              "location"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "date": {
+                "type": "string",
+                "format": "date"
+              },
+              "timezone": {
+                "type": "string",
+                "minLength": 1
+              },
+              "lessons": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/lesson"
+                }
+              },
+              "source": {
+                "const": "repository_schedule"
+              }
+            },
+            "required": [
+              "date",
+              "timezone",
+              "lessons",
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "error"
+              },
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "invalid_arguments",
+                      "source_unavailable"
+                    ]
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "status",
+              "error"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ReadOnlyHint": true
+    },
+    {
+      "Name": "get_weather",
+      "Description": "Текущая погода в городе по Open-Meteo, не прогноз на весь день. city — название города, при необходимости со страной/областью через запятую. При ambiguous попросите уточнение, не выбирайте первый вариант. weather_code — код условий WMO.",
+      "InputSchema": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "city"
+        ],
+        "additionalProperties": false
+      },
+      "OutputSchema": {
+        "type": "object",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "ok"
+              },
+              "city": {
+                "type": "string",
+                "minLength": 1
+              },
+              "country": {
+                "type": "string",
+                "minLength": 1
+              },
+              "temperature_c": {
+                "type": "number",
+                "minimum": -273.15
+              },
+              "weather_code": {
+                "type": "integer",
+                "enum": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  45,
+                  48,
+                  51,
+                  53,
+                  55,
+                  56,
+                  57,
+                  61,
+                  63,
+                  65,
+                  66,
+                  67,
+                  71,
+                  73,
+                  75,
+                  77,
+                  80,
+                  81,
+                  82,
+                  85,
+                  86,
+                  95,
+                  96,
+                  97,
+                  99
+                ]
+              },
+              "wind_speed": {
+                "type": "number",
+                "minimum": 0
+              },
+              "wind_unit": {
+                "const": "km/h"
+              },
+              "observed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "timezone": {
+                "type": "string",
+                "minLength": 1
+              },
+              "source": {
+                "const": "open_meteo"
+              }
+            },
+            "required": [
+              "status",
+              "city",
+              "country",
+              "temperature_c",
+              "weather_code",
+              "wind_speed",
+              "wind_unit",
+              "observed_at",
+              "timezone",
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "not_found"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "ambiguous"
+              },
+              "candidates": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 100,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "country": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "country_code": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{2}$"
+                    },
+                    "admin1": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "city",
+                    "country",
+                    "country_code",
+                    "admin1"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "status",
+              "candidates"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "error"
+              },
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "invalid_arguments",
+                      "source_unavailable",
+                      "external_timeout",
+                      "invalid_external_response"
+                    ]
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "status",
+              "error"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ReadOnlyHint": true
+    },
+    {
+      "Name": "add_reminder",
+      "Description": "Двухэтапное создание напоминания. Когда известны текст, будущее время и часовой пояс,\nмодель сразу предлагает вызов add_reminder с text и remind_at — это предложение параметров,\nдля него предварительное согласие текстом не нужно. Telegram-приложение перехватывает\nпредложение, сохраняет подготовленное действие и показывает кнопки «Подтвердить»/«Отменить».\nСам MCP-сервер сохраняет напоминание только после явного подтверждения кнопкой;\nбез доверенного контекста и сохранённого подтверждения выполнение запрещено.\ntext — текст 1–500 символов; remind_at — будущее ISO 8601 время с явным смещением или Z.\nВладелец и подтверждение передаются доверенным клиентом вне аргументов модели.\nПовтор подтверждённого действия возвращает прежний результат.",
+      "InputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "remind_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "text",
+          "remind_at"
+        ],
+        "additionalProperties": false
+      },
+      "OutputSchema": {
+        "type": "object",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "reminder_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "remind_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "timezone": {
+                "type": "string",
+                "minLength": 1
+              },
+              "created": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "reminder_id",
+              "remind_at",
+              "timezone",
+              "created"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "error"
+              },
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "invalid_arguments",
+                      "unauthorized",
+                      "action_not_confirmed",
+                      "action_expired",
+                      "action_cancelled",
+                      "action_mismatch",
+                      "storage_unavailable"
+                    ]
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "status",
+              "error"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ReadOnlyHint": false
+    }
+  ],
+  "cases": [
+    {
+      "id": "weather_1",
+      "query": "Какая сейчас погода в Санкт-Петербурге?",
+      "expected_action": "get_weather",
+      "expected_arguments": {
+        "city": "Санкт-Петербург"
+      }
+    }
+  ],
+  "runner_error": "UnknownException"
+}

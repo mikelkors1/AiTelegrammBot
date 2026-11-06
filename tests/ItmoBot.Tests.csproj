@@ -11,5 +11,6 @@
     </PackageReference>
     <ProjectReference Include="../app/ItmoBot.csproj" />
     <ProjectReference Include="../tools/ItmoBot.Tools.csproj" />
+    <ProjectReference Include="../mcp/ItmoBot.Mcp.csproj" />
   </ItemGroup>
 </Project>

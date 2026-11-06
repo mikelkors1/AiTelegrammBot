@@ -1,12 +1,11 @@
-using System.Net;
 using System.Net.Sockets;
-using ItmoBot.Application.ValueObjects;
+using System.Net;
 using ItmoBot.Configuration.Loading;
 using ItmoBot.Configuration.Models;
-using ItmoBot.Configuration.ResultTypes;
-using ItmoBot.Shared.ValueObjects;
+using ItmoBot.Shared.Results;
+using ItmoBot.Shared.Validation;
+using ItmoBot.Validation;
 using Xunit;
-using ChatId = ItmoBot.Application.ValueObjects.ChatId;
 
 namespace ItmoBot.Tests.Support;
 
@@ -37,28 +36,28 @@ internal sealed class TestValues
             }
         }
 
-        return Assert.IsType<SettingsLoadResult.Success>(new SettingsLoader(new EnvironmentFileReader()).Load("/nonexistent/env", values)).Settings;
+        return Assert.IsType<Result<Settings>.Success>(new SettingsLoader(new EnvironmentFileReader()).Load("/nonexistent/env", values)).Value;
     }
 
-    public PortNumber FreePort()
+    public int FreePort()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         return Port(((IPEndPoint)listener.LocalEndpoint).Port);
     }
 
-    public PortNumber Port(int value)
+    public int Port(int value)
     {
-        return new PortNumber(value);
+        return ConfigurationChecks.PortNumber(value);
     }
 
-    public ChatId Chat(long value)
+    public long Chat(long value)
     {
-        return new ChatId(value);
+        return AgentChecks.ChatId(value);
     }
 
-    public TelegramText Text(string value)
+    public string Text(string value)
     {
-        return new TelegramText(value);
+        return TelegramChecks.TelegramText(value);
     }
 }

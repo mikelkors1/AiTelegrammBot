@@ -6,6 +6,10 @@ namespace ItmoBot.Tests.TestDoubles;
 internal sealed class LlmTransport : HttpMessageHandler
 {
     public string ResponseBody { get; init; } = "{}";
+    public IReadOnlyList<string>? ResponseBodies
+    {
+        get; init;
+    }
     public HttpStatusCode Status { get; init; } = HttpStatusCode.OK;
     public Exception? Error
     {
@@ -61,7 +65,7 @@ internal sealed class LlmTransport : HttpMessageHandler
 
         var response = new HttpResponseMessage(Status)
         {
-            Content = new StringContent(ResponseBody, Encoding.UTF8, "application/json"),
+            Content = new StringContent(ResponseBodies is null ? ResponseBody : ResponseBodies[Calls - 1], Encoding.UTF8, "application/json"),
         };
         if (RetryAfter is { } delay)
         {

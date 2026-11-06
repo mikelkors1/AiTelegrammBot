@@ -1,5 +1,5 @@
-using System.Net;
 using System.Net.Sockets;
+using System.Net;
 using System.Text;
 using ItmoBot.Infrastructure.Telegram;
 using ItmoBot.Tests.Support;
@@ -10,7 +10,7 @@ namespace ItmoBot.Tests.Unit.Telegram;
 public sealed class ProxyTests
 {
     [Fact]
-    public async Task HttpProxyReceivesConnectAndHasNoDirectFallback()
+    public async Task SendAsync_HttpProxy_ReceivesConnectAndHasNoDirectFallback()
     {
         // Arrange
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -19,7 +19,7 @@ public sealed class ProxyTests
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         var values = new TestValues().Environment();
         values["TELEGRAM_PROXY_URL"] = $"http://127.0.0.1:{port}";
-        using var client = new TelegramHttpClientFactory().Create(new TestValues().Settings(values));
+        using var client = TelegramGateway.CreateHttpClient(new TestValues().Settings(values));
         var request = client.GetAsync("https://api.telegram.org", timeout.Token);
         using var socket = await listener.AcceptTcpClientAsync(timeout.Token);
         var stream = socket.GetStream();

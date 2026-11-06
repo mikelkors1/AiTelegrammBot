@@ -1,6 +1,5 @@
-using ItmoBot.Application.Models;
-using ItmoBot.Application.ValueObjects;
+using ItmoBot.Application.Conversations;
 
 namespace ItmoBot.Tests.TestDoubles;
 
-internal sealed record class TestStoredTurn(ConversationTurn Turn, LlmText User, LlmText? Assistant, ConversationTurnStatus Status);
+internal sealed record class TestStoredTurn(ConversationTurn Turn, string User, string? Assistant, ConversationTurnStatus Status);

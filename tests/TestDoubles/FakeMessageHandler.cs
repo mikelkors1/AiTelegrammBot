@@ -1,19 +1,24 @@
-using ItmoBot.Application.ValueObjects;
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.ResultTypes;
-using ItmoBot.Application.Models;
+using ItmoBot.Application.Messaging;
+using ItmoBot.Shared.Results;
 
 namespace ItmoBot.Tests.TestDoubles;
 
 internal sealed class FakeMessageHandler(Action onHandled) : IMessageHandler
 {
+    public Func<IncomingUpdate, CancellationToken, Task<Result<bool>>>? OnHandle
+    {
+        get; init;
+    }
+
     public List<int> ReceivedUpdates { get; } = [];
 
-    public Task<MessageHandlingResult> HandleAsync(IncomingUpdate update, CancellationToken cancellationToken)
+    public Task<Result<bool>> HandleAsync(IncomingUpdate update, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        ReceivedUpdates.Add(update.Id.Value);
+        ReceivedUpdates.Add(update.Id);
         onHandled();
-        return Task.FromResult<MessageHandlingResult>(new MessageHandlingResult.Success(WasHandled: true));
+        return OnHandle is null
+            ? Task.FromResult<Result<bool>>(new Result<bool>.Success(Value: true))
+            : OnHandle(update, cancellationToken);
     }
 }

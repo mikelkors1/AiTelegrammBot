@@ -1,27 +1,27 @@
-using ItmoBot.Application.Contracts;
 using ItmoBot.Configuration.Contracts;
 using ItmoBot.Configuration.Loading;
 using ItmoBot.Infrastructure.Health;
-using ItmoBot.Infrastructure.Logging;
-using ItmoBot.Infrastructure.PostgreSql;
+using ItmoBot.Shared.Results;
 using ItmoBot.Tools.Contracts;
 using ItmoBot.Tools;
-using ItmoBot.Tools.ResultTypes;
 
 try
 {
+    if (args.Length > 0 && args[0] == "evaluate-routing")
+    {
+        return await new RoutingExperimentRunner().RunAsync(args);
+    }
+
     IEnvironmentFileReader environmentFileReader = new EnvironmentFileReader();
-    ISettingsLoader settingsLoader = new SettingsLoader(environmentFileReader);
+    SettingsLoader settingsLoader = new SettingsLoader(environmentFileReader);
     ISecretConsoleInput secretInput = new SecretConsoleInput();
-    IEnvironmentPreparer environmentPreparer = new EnvironmentPreparer(environmentFileReader, settingsLoader, secretInput);
+    EnvironmentPreparer environmentPreparer = new EnvironmentPreparer(environmentFileReader, settingsLoader, secretInput);
     IProcessRunner processRunner = new ProcessRunner();
-    IDatabaseFactory databaseFactory = new DatabaseFactory();
-    ISecretRedactorFactory redactorFactory = new SecretRedactorFactory();
-    using IReadinessChecker checker = new ReadinessChecker();
-    ILocalDevelopmentRunner runner = new LocalDevelopmentRunner(environmentPreparer, settingsLoader,
-        environmentFileReader, processRunner, databaseFactory, checker, redactorFactory);
-    var result = await runner.RunAsync(args);
-    if (result is LocalDevelopmentResult.Failure failure)
+    using ReadinessChecker checker = new ReadinessChecker();
+    LocalDevelopmentRunner runner = new LocalDevelopmentRunner(environmentPreparer, settingsLoader,
+        environmentFileReader, processRunner, checker);
+    Result result = await runner.RunAsync(args);
+    if (result is Result.Failure failure)
     {
         Console.Error.WriteLine($"{failure.Error.Code}: {failure.Error.Message}");
         return 1;

@@ -1,15 +1,14 @@
 using System.Net;
 using System.Text.Json;
-using ItmoBot.Application.Models;
-using ItmoBot.Application.ResultTypes;
-using ItmoBot.Application.ValueObjects;
+using ItmoBot.Application.Llm;
 using ItmoBot.Configuration.Models;
 using ItmoBot.Infrastructure.Llm;
 using ItmoBot.Shared.Errors;
 using ItmoBot.Tests.Support;
 using ItmoBot.Tests.TestDoubles;
-using Microsoft.Extensions.Logging;
+using ItmoBot.Validation;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace ItmoBot.Tests.Unit.Llm;
@@ -21,17 +20,17 @@ public sealed class OpenRouterLlmClientTests
     [InlineData("0.3")]
     [InlineData("0.7")]
     [InlineData("1.0")]
-    public async Task RequestPreservesRolesOrderAndGenerationParameters(string temperature)
+    public async Task CompleteAsync_Request_PreservesRolesOrderAndGenerationParameters(string temperature)
     {
         // Arrange
         var transport = new LlmTransport { ResponseBody = Response("Ответ") };
         using var client = CreateClient(transport);
-        var creativity = new Temperature(decimal.Parse(temperature, System.Globalization.CultureInfo.InvariantCulture));
+        decimal creativity = RequestChecks.Temperature(decimal.Parse(temperature, System.Globalization.CultureInfo.InvariantCulture));
         var request = new LlmRequest([
-            new LlmMessage(LlmMessageRole.System, new LlmText("Системная инструкция")),
-            new LlmMessage(LlmMessageRole.User, new LlmText("Предыдущий запрос")),
-            new LlmMessage(LlmMessageRole.Assistant, new LlmText("Предыдущий ответ")),
-            new LlmMessage(LlmMessageRole.User, new LlmText("Текущий запрос")),
+            new LlmMessage(LlmMessageRole.System, RequestChecks.LlmText("Системная инструкция")),
+            new LlmMessage(LlmMessageRole.User, RequestChecks.LlmText("Предыдущий запрос")),
+            new LlmMessage(LlmMessageRole.Assistant, RequestChecks.LlmText("Предыдущий ответ")),
+            new LlmMessage(LlmMessageRole.User, RequestChecks.LlmText("Текущий запрос")),
         ], creativity);
 
         // Act
@@ -44,19 +43,19 @@ public sealed class OpenRouterLlmClientTests
         using var body = JsonDocument.Parse(transport.Body!);
         var root = body.RootElement;
         Assert.Equal("qwen/qwen3.8-27b:free", root.GetProperty("model").GetString());
-        Assert.Equal(creativity.Value, root.GetProperty("temperature").GetDecimal());
+        Assert.Equal(creativity, root.GetProperty("temperature").GetDecimal());
         Assert.Equal(2048, root.GetProperty("max_tokens").GetInt32());
         Assert.False(root.GetProperty("stream").GetBoolean());
         Assert.False(root.GetProperty("reasoning").GetProperty("enabled").GetBoolean());
         Assert.True(root.GetProperty("provider").GetProperty("require_parameters").GetBoolean());
         Assert.False(root.GetProperty("provider").GetProperty("allow_fallbacks").GetBoolean());
         Assert.Equal(new[] { "system", "user", "assistant", "user" }, root.GetProperty("messages").EnumerateArray().Select(m => m.GetProperty("role").GetString()));
-        Assert.Equal(request.Messages.Select(m => m.Content.Value), root.GetProperty("messages").EnumerateArray().Select(m => m.GetProperty("content").GetString()));
+        Assert.Equal(request.Messages.Select(m => m.Content), root.GetProperty("messages").EnumerateArray().Select(m => m.GetProperty("content").GetString()));
         Assert.Equal(1, transport.Calls);
     }
 
     [Fact]
-    public async Task CompleteResponsePreservesLongTextAndUsage()
+    public async Task CompleteAsync_CompleteResponse_PreservesLongTextAndUsage()
     {
         // Arrange
         var text = "  " + new string('а', 5000) + "👋\n";
@@ -68,12 +67,12 @@ public sealed class OpenRouterLlmClientTests
 
         // Assert
         var response = Assert.IsType<LlmCompletionResult.Success>(result).Response;
-        Assert.Equal(text, response.Text.Value);
-        Assert.Equal("qwen/qwen3.8-27b:free", response.Model.Value);
-        Assert.Equal("ModelRun", response.Provider!.Value);
-        Assert.Equal(10, response.Usage!.InputTokens.Value);
-        Assert.Equal(20, response.Usage.OutputTokens.Value);
-        Assert.Equal(30, response.Usage.TotalTokens.Value);
+        Assert.Equal(text, response.Text);
+        Assert.Equal("qwen/qwen3.8-27b:free", response.Model);
+        Assert.Equal("ModelRun", response.Provider!);
+        Assert.Equal(10, response.Usage!.InputTokens);
+        Assert.Equal(20, response.Usage.OutputTokens);
+        Assert.Equal(30, response.Usage.TotalTokens);
     }
 
     [Theory]
@@ -86,7 +85,7 @@ public sealed class OpenRouterLlmClientTests
     [InlineData(503, ErrorCode.LlmUnavailable, true)]
     [InlineData(504, ErrorCode.LlmTimeout, true)]
     [InlineData(400, ErrorCode.LlmRejectedRequest, false)]
-    public async Task HttpErrorIsClassifiedWithoutLeakingResponseBodyOrRetrying(int status, ErrorCode code, bool retryable)
+    public async Task CompleteAsync_HttpError_IsClassifiedWithoutLeakingResponseBodyOrRetrying(int status, ErrorCode code, bool retryable)
     {
         // Arrange
         var transport = new LlmTransport
@@ -112,7 +111,7 @@ public sealed class OpenRouterLlmClientTests
     }
 
     [Fact]
-    public async Task ErrorInsideHttp200IsNotTreatedAsSuccess()
+    public async Task CompleteAsync_ErrorInsideHttp200_IsNotTreatedAsSuccess()
     {
         // Arrange
         var transport = new LlmTransport { ResponseBody = "{\"error\":{\"code\":429,\"message\":\"secret-dialog\"}}" };
@@ -140,7 +139,7 @@ public sealed class OpenRouterLlmClientTests
     [InlineData("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":null}}]}", ErrorCode.EmptyLlmResponse)]
     [InlineData("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\" \"}}]}", ErrorCode.EmptyLlmResponse)]
     [InlineData("{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":{}}}]}", ErrorCode.InvalidLlmResponse)]
-    public async Task MalformedEmptyAndIncompleteResponsesHaveSafeFailures(string body, ErrorCode code)
+    public async Task CompleteAsync_MalformedEmptyAndIncompleteResponses_HaveSafeFailures(string body, ErrorCode code)
     {
         // Arrange
         var transport = new LlmTransport { ResponseBody = body };
@@ -162,7 +161,7 @@ public sealed class OpenRouterLlmClientTests
     [InlineData("{\"prompt_tokens\":-1,\"completion_tokens\":20,\"total_tokens\":19}", false)]
     [InlineData("{\"prompt_tokens\":10,\"completion_tokens\":20,\"total_tokens\":99}", false)]
     [InlineData("{\"prompt_tokens\":10}", false)]
-    public async Task UsageIsOptionalButValidatedWhenPresent(string usage, bool success)
+    public async Task CompleteAsync_Usage_IsOptionalButValidatedWhenPresent(string usage, bool success)
     {
         // Arrange
         var transport = new LlmTransport { ResponseBody = Response("Ответ", usage) };
@@ -184,7 +183,7 @@ public sealed class OpenRouterLlmClientTests
     }
 
     [Fact]
-    public async Task NetworkErrorDoesNotExposeExceptionMessageInLogsOrResult()
+    public async Task CompleteAsync_NetworkError_DoesNotExposeExceptionMessageInLogsOrResult()
     {
         // Arrange
         var transport = new LlmTransport { Error = new HttpRequestException("test-only-openrouter-secret secret-user-dialog secret-system-prompt") };
@@ -207,7 +206,7 @@ public sealed class OpenRouterLlmClientTests
     }
 
     [Fact]
-    public async Task TimeoutReturnsRetryableFailure()
+    public async Task CompleteAsync_Timeout_ReturnsRetryableFailure()
     {
         // Arrange
         var transport = new LlmTransport { WaitForCancellation = true };
@@ -224,7 +223,7 @@ public sealed class OpenRouterLlmClientTests
     }
 
     [Fact]
-    public async Task CallerCancellationPropagatesInsteadOfReturningFailure()
+    public async Task CompleteAsync_CallerCancellation_PropagatesInsteadOfReturningFailure()
     {
         // Arrange
         var transport = new LlmTransport { WaitForCancellation = true };
@@ -243,7 +242,7 @@ public sealed class OpenRouterLlmClientTests
     }
 
     [Fact]
-    public void ClientDisposesOwnedHttpResources()
+    public void Dispose_OwnedHttpClient_DisposesTransport()
     {
         // Arrange
         var transport = new LlmTransport();
@@ -256,16 +255,73 @@ public sealed class OpenRouterLlmClientTests
         Assert.True(transport.WasDisposed);
     }
 
+    [Theory]
+    [InlineData("daily", true)]
+    [InlineData("legacy_daily", true)]
+    [InlineData("upstream", false)]
+    [InlineData("minute", false)]
+    [InlineData("malformed", false)]
+    public async Task CompleteAsync_RateLimitResponse_DistinguishesDailyQuotaWithoutLeakingBody(string kind, bool daily)
+    {
+        // Arrange
+        var reset = new DateTimeOffset(DateTime.UtcNow.Date.AddDays(1), TimeSpan.Zero);
+        var metadata = new Dictionary<string, object?>
+        {
+            ["headers"] = new Dictionary<string, string>
+            {
+                ["X-RateLimit-Limit"] = kind == "minute" ? "20" : "50",
+                ["X-RateLimit-Remaining"] = "0",
+                ["X-RateLimit-Reset"] = reset.ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture),
+            },
+        };
+        if (kind == "daily")
+        {
+            metadata["limit_source"] = "openrouter_free_tier_daily";
+        }
+        else if (kind == "upstream")
+        {
+            metadata["provider_name"] = "provider";
+        }
+
+        var logger = new RecordingLogger();
+        var transport = new LlmTransport
+        {
+            Status = HttpStatusCode.TooManyRequests,
+            ResponseBody = kind == "malformed" ? "private-secret" : JsonSerializer.Serialize(new
+            {
+                error = new
+                {
+                    code = 429,
+                    message = "private-secret free-models-per-day",
+                    metadata
+                },
+            }),
+        };
+        using var client = CreateClient(transport, logger: logger);
+
+        // Act
+        var result = await client.CompleteAsync(Request(), CancellationToken.None);
+
+        // Assert
+        var failure = Assert.IsType<LlmCompletionResult.Failure>(result);
+        Assert.Equal(daily ? ErrorCode.LlmDailyQuotaExceeded : ErrorCode.LlmRateLimited, failure.Error.Code);
+        Assert.Equal(!daily, failure.Error.IsRetryable);
+        Assert.DoesNotContain("private-secret", failure.Message + string.Join("", logger.Entries));
+        if (daily)
+        {
+            Assert.Equal(reset, failure.QuotaResetsAt);
+            Assert.Contains(logger.Entries, line => line.Contains("Суточный лимит", StringComparison.Ordinal));
+        }
+    }
+
     private OpenRouterLlmClient CreateClient(LlmTransport transport, Settings? settings = null, ILogger? logger = null)
     {
-        var mapper = new LlmErrorMapper();
-        return new OpenRouterLlmClient((settings ?? new TestValues().Settings()).Llm, new HttpClient(transport),
-            new OpenRouterRequestWriter(), new OpenRouterResponseParser(mapper), mapper, logger ?? NullLogger.Instance);
+        return new OpenRouterLlmClient((settings ?? new TestValues().Settings()).Llm, new HttpClient(transport), logger ?? NullLogger.Instance, new AgentLoopFixture().Requests);
     }
 
     private LlmRequest Request()
     {
-        return new LlmRequest([new LlmMessage(LlmMessageRole.User, new LlmText("Учебный запрос"))], new Temperature(0.3m));
+        return new LlmRequest([new LlmMessage(LlmMessageRole.User, RequestChecks.LlmText("Учебный запрос"))], RequestChecks.Temperature(0.3m));
     }
 
     private string Response(string text, string usage = "{\"prompt_tokens\":10,\"completion_tokens\":20,\"total_tokens\":30}")
@@ -273,4 +329,24 @@ public sealed class OpenRouterLlmClientTests
         return "{\"model\":\"qwen/qwen3.8-27b:free\",\"provider\":\"ModelRun\",\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":"
             + JsonSerializer.Serialize(text) + "}}],\"usage\":" + usage + "}";
     }
+
+    [Fact]
+    public void CreateRequest_MutatingSourceHistory_DoesNotChangeAnAlreadyPreparedRequest()
+    {
+        // Arrange
+        var original = new LlmMessage(LlmMessageRole.User, RequestChecks.LlmText("Первый запрос"));
+        var history = new List<LlmMessage> { original };
+        var request = new LlmRequest(history, RequestChecks.Temperature(0.0m));
+
+        history.Clear();
+
+        // Act
+        history.Add(new LlmMessage(LlmMessageRole.User, RequestChecks.LlmText("Другой запрос")));
+
+        // Assert
+        Assert.Equal(original, Assert.Single(request.Messages));
+        Assert.Throws<ArgumentException>(() => new LlmRequest([], RequestChecks.Temperature(0.0m)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new LlmMessage((LlmMessageRole)99, original.Content));
+    }
+
 }

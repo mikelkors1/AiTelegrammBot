@@ -1,18 +1,17 @@
 using System.Globalization;
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.Models;
-using ItmoBot.Application.ResultTypes;
-using ItmoBot.Application.ValueObjects;
+using ItmoBot.Application.Agent.Models;
+using ItmoBot.Application.Conversations;
 using ItmoBot.Shared.Errors;
 using ItmoBot.Shared.Exceptions;
+using ItmoBot.Validation;
 
 namespace ItmoBot.Application.Commands;
 
-public sealed class BotCommandParser(IBotMenu menu) : IBotCommandParser
+public sealed class BotCommandParser(BotMenu menu)
 {
-    public BotCommandParseResult Parse(TelegramText text)
+    public BotCommandParseResult Parse(string text)
     {
-        var input = (menu.ResolveCommand(text) ?? text).Value.Trim();
+        var input = (menu.ResolveCommand(text) ?? text).Trim();
         if (!input.StartsWith('/'))
         {
             return new BotCommandParseResult.NotCommand();
@@ -26,6 +25,18 @@ public sealed class BotCommandParser(IBotMenu menu) : IBotCommandParser
             return ParseSettings(argument);
         }
 
+        if (name == "/timezone")
+        {
+            try
+            {
+                return new BotCommandParseResult.Success(argument.Length == 0 ? new BotCommand.ShowTimeZone() : new BotCommand.SetTimeZone(new UserTimeZone(argument)));
+            }
+            catch (ArgumentException)
+            {
+                return new BotCommandParseResult.Failure(new AppError(ErrorCode.InvalidTimeZone, "Укажите существующий часовой пояс IANA, например Europe/Moscow."));
+            }
+        }
+
         BotCommand? command = name switch
         {
             "/start" => new BotCommand.Start(),
@@ -33,6 +44,8 @@ public sealed class BotCommandParser(IBotMenu menu) : IBotCommandParser
             "/study" => new BotCommand.ChangeMode(AssistantMode.Study),
             "/translate" => new BotCommand.ChangeMode(AssistantMode.Translate),
             "/quiz" => new BotCommand.ChangeMode(AssistantMode.Quiz),
+            "/tools" => new BotCommand.ShowTools(),
+            "/why" => new BotCommand.ShowWhy(),
             "/reset" => new BotCommand.Reset(),
             _ => null,
         };
@@ -63,9 +76,9 @@ public sealed class BotCommandParser(IBotMenu menu) : IBotCommandParser
 
         try
         {
-            return new BotCommandParseResult.Success(new BotCommand.ChangeCreativity(new Temperature(value)));
+            return new BotCommandParseResult.Success(new BotCommand.ChangeCreativity(RequestChecks.Temperature(value)));
         }
-        catch (ValueObjectValidationException)
+        catch (InputValidationException)
         {
             return InvalidTemperature();
         }

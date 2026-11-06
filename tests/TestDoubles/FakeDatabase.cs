@@ -1,6 +1,6 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.ResultTypes;
+using ItmoBot.Application.Storage;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Results;
 
 namespace ItmoBot.Tests.TestDoubles;
 
@@ -15,16 +15,16 @@ internal sealed class FakeDatabase : IDatabase
         get; set;
     }
 
-    public Task<DatabaseCheckResult> CheckAsync(CancellationToken cancellationToken)
+    public Task<Result> CheckAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (Fails)
         {
-            return Task.FromResult<DatabaseCheckResult>(new DatabaseCheckResult.Failure(new AppError(
+            return Task.FromResult<Result>(new Result.Failure(new AppError(
                 ErrorCode.DatabaseUnavailable, "База данных недоступна.", IsRetryable: true)));
         }
 
-        return Task.FromResult<DatabaseCheckResult>(new DatabaseCheckResult.Success());
+        return Task.FromResult<Result>(new Result.Success());
     }
 
     public ValueTask DisposeAsync()

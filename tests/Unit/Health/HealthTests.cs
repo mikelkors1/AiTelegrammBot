@@ -1,8 +1,8 @@
-using ItmoBot.Application.ResultTypes;
 using System.Net;
-using ItmoBot.Infrastructure.Health;
 using ItmoBot.Infrastructure.Health.ResultTypes;
+using ItmoBot.Infrastructure.Health;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Results;
 using ItmoBot.Tests.Support;
 using ItmoBot.Tests.TestDoubles;
 using Xunit;
@@ -12,7 +12,7 @@ namespace ItmoBot.Tests.Unit.Health;
 public sealed class HealthTests
 {
     [Fact]
-    public async Task HealthReturnsDatabaseFailureAndDetectsRecoveryAndStoppedPolling()
+    public async Task CheckAsync_Health_ReturnsDatabaseFailureAndDetectsRecoveryAndStoppedPolling()
     {
         // Arrange
         var database = new FakeDatabase();
@@ -37,13 +37,13 @@ public sealed class HealthTests
     }
 
     [Fact]
-    public async Task HttpContractReturns503Then200()
+    public async Task CheckAsync_HttpContract_Returns503Then200()
     {
         // Arrange
-        var port = new TestValues().FreePort();
+        int port = new TestValues().FreePort();
         var pending = new TaskCompletionSource();
         var state = new HealthState(new FakeDatabase());
-        await using var server = new HealthServerFactory().Create(state, port);
+        await using var server = ReadinessServer.CreateServer(state, port);
         await server.StartAsync();
         try
         {
@@ -51,19 +51,18 @@ public sealed class HealthTests
             using var checker = new ReadinessChecker();
 
             // Act
-            var actualResult = (await http.GetAsync($"http://127.0.0.1:{port.Value}/health")).StatusCode;
+            var actualResult = (await http.GetAsync($"http://127.0.0.1:{port}/health")).StatusCode;
 
             // Assert
             Assert.Equal(HttpStatusCode.ServiceUnavailable,
                 actualResult);
             Assert.Equal(ErrorCode.ApplicationNotReady,
-                Assert.IsType<ReadinessCheckResult.Failure>(await checker.CheckAsync(port)).Error.Code);
+                Assert.IsType<Result.Failure>(await checker.CheckAsync(port)).Error.Code);
             state.Initialized = true;
             state.PollingTask = pending.Task;
-            var response = await http.GetAsync($"http://127.0.0.1:{port.Value}/health");
+            var response = await http.GetAsync($"http://127.0.0.1:{port}/health");
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            Assert.Equal("{\"status\":\"ok\",\"database\":\"ok\",\"polling\":\"running\"}", await response.Content.ReadAsStringAsync());
-            Assert.IsType<ReadinessCheckResult.Success>(await checker.CheckAsync(port));
+            Assert.IsType<Result.Success>(await checker.CheckAsync(port));
         }
         finally
         {

@@ -1,47 +1,28 @@
-using ItmoBot.Application.Models;
-using ItmoBot.Application.ValueObjects;
-using ItmoBot.Infrastructure.PostgreSql.Contracts;
+using ItmoBot.Application.Conversations;
+using ItmoBot.Validation;
 using Npgsql;
 
 namespace ItmoBot.Infrastructure.PostgreSql.Conversations;
 
-public sealed class ConversationTurnStore : IConversationTurnStore
+public sealed class ConversationTurnStore
 {
-    private const int RetainedTurnCount = 100;
-
-    public async Task PruneAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ChatId chatId, CancellationToken cancellationToken)
+    public async Task<Guid> BeginAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ConversationState state, CancellationToken cancellationToken)
     {
-        await using var command = new NpgsqlCommand("""
-            DELETE FROM conversation_turns
-            WHERE chat_id = @chat AND turn_id IN (
-                SELECT turn_id FROM conversation_turns
-                WHERE chat_id = @chat
-                ORDER BY sequence DESC
-                OFFSET @retained
-            )
-            """, connection, transaction);
-        command.Parameters.AddWithValue("chat", chatId.Value);
-        command.Parameters.AddWithValue("retained", RetainedTurnCount);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    public async Task<ConversationTurnId> BeginAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ConversationState state, CancellationToken cancellationToken)
-    {
-        var turnId = new ConversationTurnId(Guid.NewGuid());
+        Guid turnId = RequestChecks.ConversationTurnId(Guid.NewGuid());
         await using var command = new NpgsqlCommand("INSERT INTO conversation_turns(turn_id, chat_id, revision) VALUES (@turn, @chat, @revision)", connection, transaction);
-        command.Parameters.AddWithValue("turn", turnId.Value);
-        command.Parameters.AddWithValue("chat", state.ChatId.Value);
-        command.Parameters.AddWithValue("revision", state.Revision.Value);
+        command.Parameters.AddWithValue("turn", turnId);
+        command.Parameters.AddWithValue("chat", state.ChatId);
+        command.Parameters.AddWithValue("revision", state.Revision);
         await command.ExecuteNonQueryAsync(cancellationToken);
         return turnId;
     }
 
     public async Task<StoredConversationTurn?> ReadLockedAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
-        ChatId chatId, ConversationTurnId turnId, CancellationToken cancellationToken)
+        long chatId, Guid turnId, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("SELECT revision, status FROM conversation_turns WHERE chat_id = @chat AND turn_id = @turn FOR UPDATE", connection, transaction);
-        command.Parameters.AddWithValue("chat", chatId.Value);
-        command.Parameters.AddWithValue("turn", turnId.Value);
+        command.Parameters.AddWithValue("chat", chatId);
+        command.Parameters.AddWithValue("turn", turnId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
         {
@@ -55,15 +36,15 @@ public sealed class ConversationTurnStore : IConversationTurnStore
             "failed" => ConversationTurnStatus.Failed,
             _ => throw new InvalidOperationException("В БД сохранён неизвестный статус хода диалога."),
         };
-        return new StoredConversationTurn(new ConversationRevision(reader.GetInt64(0)), status);
+        return new StoredConversationTurn(RequestChecks.ConversationRevision(reader.GetInt64(0)), status);
     }
 
     public async Task SetStatusAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
-        ConversationTurnId turnId, ConversationTurnStatus status, CancellationToken cancellationToken)
+        Guid turnId, ConversationTurnStatus status, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("UPDATE conversation_turns SET status = @status WHERE turn_id = @turn", connection, transaction);
         command.Parameters.AddWithValue("status", status.ToString().ToLowerInvariant());
-        command.Parameters.AddWithValue("turn", turnId.Value);
+        command.Parameters.AddWithValue("turn", turnId);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }

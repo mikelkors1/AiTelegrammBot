@@ -1,10 +1,9 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.Models;
-using ItmoBot.Application.ValueObjects;
+using ItmoBot.Application.Messaging;
+using ItmoBot.Validation;
 
 namespace ItmoBot.Application.Commands;
 
-public sealed class BotMenu : IBotMenu
+public sealed class BotMenu
 {
     private readonly IReadOnlyList<BotMenuButton> buttons;
     private readonly TelegramReplyKeyboard mainKeyboard;
@@ -16,6 +15,7 @@ public sealed class BotMenu : IBotMenu
         [
             [Button("📚 Учёба", "/study"), Button("🌍 Перевод", "/translate"), Button("🧠 Опрос", "/quiz")],
             [Button("⚙️ Настройки", "/settings"), Button("🗑 Сброс истории", "/reset"), Button("👋 Помощь", "/start")],
+            [Button("🛠 Инструменты", "/tools"), Button("🕒 Часовой пояс", "/timezone"), Button("🔎 Почему?", "/why")],
         ];
         BotMenuButton[][] settingsRows =
         [
@@ -38,19 +38,19 @@ public sealed class BotMenu : IBotMenu
         };
     }
 
-    public TelegramText? ResolveCommand(TelegramText text)
+    public string? ResolveCommand(string text)
     {
-        return buttons.FirstOrDefault(button => button.Label.Value == text.Value.Trim())?.Command;
+        return buttons.FirstOrDefault(button => button.Label == text.Trim())?.Command;
     }
 
     private BotMenuButton Button(string label, string command)
     {
-        return new BotMenuButton(new TelegramText(label), new TelegramText(command));
+        return new BotMenuButton(TelegramChecks.TelegramText(label), TelegramChecks.TelegramText(command));
     }
 
     private TelegramReplyKeyboard CreateKeyboard(IEnumerable<IEnumerable<BotMenuButton>> rows)
     {
         return new TelegramReplyKeyboard(Array.AsReadOnly(rows.Select(row =>
-            (IReadOnlyList<TelegramText>)Array.AsReadOnly(row.Select(button => button.Label).ToArray())).ToArray()));
+            (IReadOnlyList<string>)Array.AsReadOnly(row.Select(button => button.Label).ToArray())).ToArray()));
     }
 }

@@ -1,10 +1,9 @@
-using ItmoBot.Infrastructure.PostgreSql.Contracts;
 using ItmoBot.Shared.Errors;
 using Npgsql;
 
 namespace ItmoBot.Infrastructure.PostgreSql;
 
-public sealed class PostgresErrorMapper : IPostgresErrorMapper
+public sealed class PostgresErrorMapper
 {
     public AppError Map(Exception error)
     {

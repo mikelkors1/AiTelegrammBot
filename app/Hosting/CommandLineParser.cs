@@ -1,12 +1,11 @@
-using ItmoBot.Hosting.Contracts;
-using ItmoBot.Hosting.ResultTypes;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Results;
 
 namespace ItmoBot.Hosting;
 
-public sealed class CommandLineParser : ICommandLineParser
+public sealed class CommandLineParser
 {
-    public CommandLineParseResult Parse(IEnumerable<string> args)
+    public Result<CommandLineOptions> Parse(IEnumerable<string> args)
     {
         var arguments = args.ToList();
         var envFile = ".env";
@@ -17,7 +16,7 @@ public sealed class CommandLineParser : ICommandLineParser
             if (index + 1 >= arguments.Count || string.IsNullOrWhiteSpace(arguments[index + 1])
                 || arguments[index + 1].StartsWith("--", StringComparison.Ordinal))
             {
-                return new CommandLineParseResult.Failure(new AppError(
+                return new Result<CommandLineOptions>.Failure(new AppError(
                     ErrorCode.InvalidArguments, "--env-file: укажите путь к файлу."));
             }
 
@@ -41,10 +40,10 @@ public sealed class CommandLineParser : ICommandLineParser
         }
         else if (arguments.Count > 0)
         {
-            return new CommandLineParseResult.Failure(new AppError(
+            return new Result<CommandLineOptions>.Failure(new AppError(
                 ErrorCode.InvalidArguments, "Использование: ItmoBot [healthcheck|dbcheck|migrate] [--env-file путь]."));
         }
 
-        return new CommandLineParseResult.Success(new CommandLineOptions(command, envFile));
+        return new Result<CommandLineOptions>.Success(new CommandLineOptions(command, envFile));
     }
 }

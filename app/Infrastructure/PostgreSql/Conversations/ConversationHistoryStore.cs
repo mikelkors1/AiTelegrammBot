@@ -1,13 +1,12 @@
-using ItmoBot.Application.Models;
-using ItmoBot.Application.ValueObjects;
-using ItmoBot.Infrastructure.PostgreSql.Contracts;
+using ItmoBot.Application.Llm;
+using ItmoBot.Validation;
 using Npgsql;
 
 namespace ItmoBot.Infrastructure.PostgreSql.Conversations;
 
-public sealed class ConversationHistoryStore : IConversationHistoryStore
+public sealed class ConversationHistoryStore
 {
-    public async Task<IReadOnlyList<LlmMessage>> ReadAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ChatId chatId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<LlmMessage>> ReadAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, long chatId, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("""
             SELECT m.role, m.content
@@ -15,7 +14,7 @@ public sealed class ConversationHistoryStore : IConversationHistoryStore
             WHERE t.chat_id = @chat AND t.status = 'succeeded'
             ORDER BY t.sequence, CASE m.role WHEN 'user' THEN 0 ELSE 1 END
             """, connection, transaction);
-        command.Parameters.AddWithValue("chat", chatId.Value);
+        command.Parameters.AddWithValue("chat", chatId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var history = new List<LlmMessage>();
         while (await reader.ReadAsync(cancellationToken))
@@ -26,18 +25,18 @@ public sealed class ConversationHistoryStore : IConversationHistoryStore
                 "assistant" => LlmMessageRole.Assistant,
                 _ => throw new InvalidOperationException("История содержит недопустимую роль."),
             };
-            history.Add(new LlmMessage(role, new LlmText(reader.GetString(1))));
+            history.Add(new LlmMessage(role, RequestChecks.LlmText(reader.GetString(1))));
         }
 
         return history.AsReadOnly();
     }
 
-    public async Task AppendAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, ConversationTurnId turnId, LlmMessage message, CancellationToken cancellationToken)
+    public async Task AppendAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid turnId, LlmMessage message, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("INSERT INTO conversation_messages(turn_id, role, content) VALUES (@turn, @role, @content)", connection, transaction);
-        command.Parameters.AddWithValue("turn", turnId.Value);
+        command.Parameters.AddWithValue("turn", turnId);
         command.Parameters.AddWithValue("role", message.Role.ToString().ToLowerInvariant());
-        command.Parameters.AddWithValue("content", message.Content.Value);
+        command.Parameters.AddWithValue("content", message.Content);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }

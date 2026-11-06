@@ -1,10 +1,10 @@
-using ItmoBot.Application.Dialogue;
-using ItmoBot.Application.Models;
-using ItmoBot.Application.ResultTypes;
-using ItmoBot.Application.ValueObjects;
+using ItmoBot.Application.Conversations;
+using ItmoBot.Application.Llm;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Shared.Results;
 using ItmoBot.Tests.Support;
 using ItmoBot.Tests.TestDoubles;
+using ItmoBot.Validation;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -13,7 +13,7 @@ namespace ItmoBot.Tests.Unit.Llm;
 public sealed class RetryingLlmClientTests
 {
     [Fact]
-    public void ConfigurationHasFiveMinuteDefaultAndAllowsTenMinutes()
+    public void CompleteAsync_Configuration_HasFiveMinuteDefaultAndAllowsTenMinutes()
     {
         // Arrange
         var defaults = new TestValues().Settings();
@@ -22,16 +22,16 @@ public sealed class RetryingLlmClientTests
         var tenMinutes = new TestValues().Settings(new Dictionary<string, string> { ["LLM_RETRY_WINDOW_SECONDS"] = "600" });
 
         // Assert
-        Assert.Equal(TimeSpan.FromMinutes(5), defaults.Llm.RetryWindow.Value);
-        Assert.Equal(TimeSpan.FromMinutes(10), tenMinutes.Llm.RetryWindow.Value);
+        Assert.Equal(TimeSpan.FromMinutes(5), defaults.Llm.RetryWindow);
+        Assert.Equal(TimeSpan.FromMinutes(10), tenMinutes.Llm.RetryWindow);
     }
 
     [Fact]
-    public async Task DecoratorOwnsInnerClientAndDisposesItOnce()
+    public async Task CompleteAsync_Decorator_OwnsInnerClientAndDisposesItOnce()
     {
         // Arrange
         var inner = new FakeLlmClient();
-        var client = new RetryingLlmClient(inner, new LlmRetryWindow(300), new ManualTimeProvider(), NullLogger.Instance);
+        var client = new RetryingLlmClient(inner, RequestChecks.LlmRetryWindow(300), new ManualTimeProvider(), NullLogger.Instance);
         client.Dispose();
 
         // Act
@@ -43,11 +43,11 @@ public sealed class RetryingLlmClientTests
     }
 
     [Fact]
-    public async Task FailureThenSuccessRetriesSameRequestWithoutIntermediateUserError()
+    public async Task CompleteAsync_FailureThenSuccess_RetriesSameRequestWithoutIntermediateUserError()
     {
         // Arrange
         var clock = new ManualTimeProvider();
-        var scenario = new BotScenario(decorateClient: inner => new RetryingLlmClient(inner, new LlmRetryWindow(300), clock, NullLogger.Instance));
+        var scenario = new BotScenario(decorateClient: inner => new RetryingLlmClient(inner, RequestChecks.LlmRetryWindow(300), clock, NullLogger.Instance));
         scenario.Llm.Error = new AppError(ErrorCode.LlmUnavailable, "provider-secret");
 
         // Act
@@ -64,12 +64,12 @@ public sealed class RetryingLlmClientTests
 
         // Act
         clock.Advance(TimeSpan.FromSeconds(5));
-        var result = await running.WaitAsync(TimeSpan.FromSeconds(5));
+        Result<bool> result = await running.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert
-        Assert.IsType<MessageHandlingResult.Success>(result);
+        Assert.IsType<Result<bool>.Success>(result);
         Assert.Equal(2, scenario.Llm.Requests.Count);
-        Assert.Equal(new MessageId(1), Assert.Single(scenario.Telegram.Deleted).MessageId);
+        Assert.Equal(TelegramChecks.MessageId(1), Assert.Single(scenario.Telegram.Deleted).MessageId);
         Assert.Same(scenario.Llm.Requests[0], scenario.Llm.Requests[1]);
         Assert.Equal(new[] { "Готовлю ответ…", "Ответ модели" }, scenario.Telegram.Sent.Select(message => message.Item2));
         var repository = (FakeConversationRepository)scenario.Repository;
@@ -79,12 +79,12 @@ public sealed class RetryingLlmClientTests
     }
 
     [Fact]
-    public async Task BackoffGrowsAndRetriesAllExpectedFailureTypesUntilSuccess()
+    public async Task CompleteAsync_Backoff_GrowsUntilSuccess()
     {
         // Arrange
         var clock = new ManualTimeProvider();
         var inner = new FakeLlmClient { Error = new AppError(ErrorCode.LlmUnauthorized, "key-secret") };
-        using var client = new RetryingLlmClient(inner, new LlmRetryWindow(300), clock, NullLogger.Instance);
+        using var client = new RetryingLlmClient(inner, RequestChecks.LlmRetryWindow(300), clock, NullLogger.Instance);
         var running = client.CompleteAsync(Request(), CancellationToken.None);
         foreach (var seconds in new[] { 5, 10, 20, 30, 30 })
         {
@@ -105,14 +105,14 @@ public sealed class RetryingLlmClientTests
     }
 
     [Fact]
-    public async Task RetryAfterIsRespectedWithoutSendingAnEarlierAttempt()
+    public async Task CompleteAsync_RetryAfter_IsRespectedWithoutSendingAnEarlierAttempt()
     {
         // Arrange
         var clock = new ManualTimeProvider();
         var inner = new FakeLlmClient();
         inner.OnComplete = (_, _) => Task.FromResult<LlmCompletionResult>(new LlmCompletionResult.Failure(
             new AppError(ErrorCode.LlmRateLimited, "secret"), TimeSpan.FromSeconds(45)));
-        using var client = new RetryingLlmClient(inner, new LlmRetryWindow(300), clock, NullLogger.Instance);
+        using var client = new RetryingLlmClient(inner, RequestChecks.LlmRetryWindow(300), clock, NullLogger.Instance);
         var running = client.CompleteAsync(Request(), CancellationToken.None);
         await clock.WaitForTimerAsync(TimeSpan.FromSeconds(45));
 
@@ -129,23 +129,23 @@ public sealed class RetryingLlmClientTests
     }
 
     [Fact]
-    public async Task ExhaustedBudgetReportsOneFinalErrorAndMarksOneAttemptFailed()
+    public async Task CompleteAsync_ExhaustedBudget_ReportsOneFinalErrorAndMarksOneAttemptFailed()
     {
         // Arrange
         var clock = new ManualTimeProvider();
-        var scenario = new BotScenario(decorateClient: inner => new RetryingLlmClient(inner, new LlmRetryWindow(300), clock, NullLogger.Instance));
+        var scenario = new BotScenario(decorateClient: inner => new RetryingLlmClient(inner, RequestChecks.LlmRetryWindow(300), clock, NullLogger.Instance));
         scenario.Llm.Error = new AppError(ErrorCode.LlmUnavailable, "secret");
         var running = scenario.SendAsync("Вопрос");
         await clock.WaitForTimerAsync(TimeSpan.FromSeconds(5));
         clock.Advance(TimeSpan.FromSeconds(300));
 
         // Act
-        var actualResult = await running.WaitAsync(TimeSpan.FromSeconds(5));
+        Result<bool> actualResult = await running.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Assert
-        var failure = Assert.IsType<MessageHandlingResult.Failure>(actualResult);
+        Result<bool>.Failure failure = Assert.IsType<Result<bool>.Failure>(actualResult);
         Assert.Equal(ErrorCode.LlmRetryTimeout, failure.Error.Code);
-        Assert.Equal(new MessageId(1), Assert.Single(scenario.Telegram.Deleted).MessageId);
+        Assert.Equal(TelegramChecks.MessageId(1), Assert.Single(scenario.Telegram.Deleted).MessageId);
         Assert.Equal(new[] { "Готовлю ответ…", "Модель не ответила за отведённое время. Попробуйте позже." }, scenario.Telegram.Sent.Select(message => message.Item2));
         var repository = (FakeConversationRepository)scenario.Repository;
         Assert.Equal(1, repository.BeginCalls);
@@ -154,13 +154,13 @@ public sealed class RetryingLlmClientTests
     }
 
     [Fact]
-    public async Task OverallDeadlineInterruptsEvenAnUncooperativeInFlightClient()
+    public async Task CompleteAsync_OverallDeadline_InterruptsEvenAnUncooperativeInFlightClient()
     {
         // Arrange
         var clock = new ManualTimeProvider();
         var response = new TaskCompletionSource<LlmCompletionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         var inner = new FakeLlmClient { OnComplete = (_, _) => response.Task };
-        using var client = new RetryingLlmClient(inner, new LlmRetryWindow(300), clock, NullLogger.Instance);
+        using var client = new RetryingLlmClient(inner, RequestChecks.LlmRetryWindow(300), clock, NullLogger.Instance);
 
         // Act
         var running = client.CompleteAsync(Request(), CancellationToken.None);
@@ -170,11 +170,11 @@ public sealed class RetryingLlmClientTests
         clock.Advance(TimeSpan.FromSeconds(300));
 
         Assert.Equal(ErrorCode.LlmRetryTimeout, Assert.IsType<LlmCompletionResult.Failure>(await running.WaitAsync(TimeSpan.FromSeconds(5))).Error.Code);
-        response.TrySetResult(new LlmCompletionResult.Success(new LlmResponse(new LlmText("Поздний"), new ModelName("test"), null, null)));
+        response.TrySetResult(new LlmCompletionResult.Success(new LlmResponse(RequestChecks.LlmText("Поздний"), RequestChecks.ModelName("test"), null, null)));
     }
 
     [Fact]
-    public async Task RetryAfterBeyondBudgetWaitsOnlyUntilDeadline()
+    public async Task CompleteAsync_RetryAfterBeyondBudget_WaitsOnlyUntilDeadline()
     {
         // Arrange
         var clock = new ManualTimeProvider();
@@ -183,7 +183,7 @@ public sealed class RetryingLlmClientTests
             OnComplete = (_, _) => Task.FromResult<LlmCompletionResult>(new LlmCompletionResult.Failure(
                 new AppError(ErrorCode.LlmRateLimited, "secret"), TimeSpan.FromDays(1))),
         };
-        using var client = new RetryingLlmClient(inner, new LlmRetryWindow(300), clock, NullLogger.Instance);
+        using var client = new RetryingLlmClient(inner, RequestChecks.LlmRetryWindow(300), clock, NullLogger.Instance);
         var running = client.CompleteAsync(Request(), CancellationToken.None);
         await clock.WaitForTimerAsync(TimeSpan.FromSeconds(300));
         clock.Advance(TimeSpan.FromSeconds(300));
@@ -197,11 +197,11 @@ public sealed class RetryingLlmClientTests
     }
 
     [Fact]
-    public async Task CallerCancellationDuringPauseStopsImmediatelyAndReleasesChat()
+    public async Task CompleteAsync_CallerCancellationDuringPause_StopsImmediatelyAndReleasesChat()
     {
         // Arrange
         var clock = new ManualTimeProvider();
-        var scenario = new BotScenario(decorateClient: inner => new RetryingLlmClient(inner, new LlmRetryWindow(300), clock, NullLogger.Instance));
+        var scenario = new BotScenario(decorateClient: inner => new RetryingLlmClient(inner, RequestChecks.LlmRetryWindow(300), clock, NullLogger.Instance));
         scenario.Llm.Error = new AppError(ErrorCode.LlmUnavailable, "secret");
         using var stopping = new CancellationTokenSource();
         var running = scenario.SendAsync("Вопрос", cancellationToken: stopping.Token);
@@ -216,11 +216,31 @@ public sealed class RetryingLlmClientTests
         Assert.Single(scenario.Llm.Requests);
         Assert.Single(scenario.Telegram.Sent);
         scenario.Llm.Error = null;
-        Assert.IsType<MessageHandlingResult.Success>(await scenario.SendAsync("Следующий").WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.IsType<Result<bool>.Success>(await scenario.SendAsync("Следующий").WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task CompleteAsync_DailyQuota_DoesNotRetryAndShowsSpecificUserMessage()
+    {
+        // Arrange
+        var logger = new RecordingLogger();
+        var scenario = new BotScenario(decorateClient: inner => new RetryingLlmClient(inner,
+            TimeSpan.FromMinutes(5), new ManualTimeProvider(), logger));
+        scenario.Llm.Error = new AppError(ErrorCode.LlmDailyQuotaExceeded, "private-provider-text");
+
+        // Act
+        var result = await scenario.SendAsync("Вопрос").WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Assert
+        Assert.Equal(ErrorCode.LlmDailyQuotaExceeded, Assert.IsType<Result<bool>.Failure>(result).Error.Code);
+        Assert.Single(scenario.Llm.Requests);
+        Assert.Contains("Суточный лимит", scenario.Telegram.Sent[^1].Item2);
+        Assert.DoesNotContain("private-provider-text", scenario.Telegram.Sent[^1].Item2);
+        Assert.Contains(logger.Entries, line => line.Contains("повторы", StringComparison.Ordinal));
     }
 
     private LlmRequest Request()
     {
-        return new LlmRequest([new LlmMessage(LlmMessageRole.User, new LlmText("Вопрос"))], new Temperature(0.3m));
+        return new LlmRequest([new LlmMessage(LlmMessageRole.User, RequestChecks.LlmText("Вопрос"))], RequestChecks.Temperature(0.3m));
     }
 }

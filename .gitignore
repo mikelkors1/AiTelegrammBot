@@ -18,3 +18,9 @@ htmlcov/
 **/obj/
 TestResults/
 .vs/
+
+# Локальные настройки IDE и дополнительные файлы секретов
+*.DotSettings.user
+.env.*
+!.env.example
+.DS_Store

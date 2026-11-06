@@ -6,6 +6,10 @@
 !stylecop.json
 !app/
 !app/**
+!mcp/
+!mcp/**
+!agent/
+!agent/**
 **/__pycache__/
 **/*.pyc
 **/.env*

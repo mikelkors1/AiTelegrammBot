@@ -1,13 +1,11 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.ResultTypes;
-using ItmoBot.Application.ValueObjects;
-using ItmoBot.Application.Models;
+using ItmoBot.Application.Commands;
+using ItmoBot.Shared.Results;
 
 namespace ItmoBot.Application.Messaging;
 
-public sealed class TelegramTextSender(ITelegramGateway telegram, ITelegramReplyFormatter formatter, IBotMenu menu, ILogger logger) : ITextSender
+public sealed class TelegramTextSender(ITelegramGateway telegram, TelegramReplyFormatter formatter, BotMenu menu, ILogger logger)
 {
-    public async Task<TextDeliveryResult> SendAsync(ChatId chatId, LlmText text, CancellationToken cancellationToken,
+    public async Task<TextDeliveryResult> SendAsync(long chatId, string text, CancellationToken cancellationToken,
         BotMenuPage menuPage = BotMenuPage.Main)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -15,17 +13,17 @@ public sealed class TelegramTextSender(ITelegramGateway telegram, ITelegramReply
         var delivered = 0;
         foreach (var part in parts)
         {
-            var sent = await telegram.SendTextAsync(chatId, part.Text, cancellationToken, part.Format,
+            Result<int> sent = await telegram.SendTextAsync(chatId, part.Text, cancellationToken, part.Format,
                 delivered == 0 ? menu.GetKeyboard(menuPage) : null);
-            if (sent is TelegramSendResult.Failure sendFailure)
+            if (sent is Result<int>.Failure sendFailure)
             {
                 logger.LogWarning("Доставка ответа прервана: {Code}, отправлено частей {Count}.", sendFailure.Error.Code, delivered);
-                return new TextDeliveryResult.Failure(sendFailure.Error, new MessagePartCount(delivered));
+                return new TextDeliveryResult.Failure(sendFailure.Error, delivered);
             }
 
             delivered++;
         }
 
-        return new TextDeliveryResult.Success(new MessagePartCount(delivered));
+        return new TextDeliveryResult.Success(delivered);
     }
 }

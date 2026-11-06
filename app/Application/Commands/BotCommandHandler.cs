@@ -1,13 +1,11 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.Models;
-using ItmoBot.Application.ResultTypes;
-using ItmoBot.Application.ValueObjects;
+using ItmoBot.Application.Conversations;
+using ItmoBot.Shared.Results;
 
 namespace ItmoBot.Application.Commands;
 
-public sealed class BotCommandHandler(IConversationRepository repository, ICommandReplyFormatter formatter) : IBotCommandHandler
+public sealed class BotCommandHandler(IConversationRepository repository, CommandReplyFormatter formatter)
 {
-    public async Task<BotCommandExecutionResult> ExecuteAsync(ChatId chatId, BotCommand command, CancellationToken cancellationToken)
+    public async Task<Result<string>> ExecuteAsync(long chatId, BotCommand command, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         switch (command)
@@ -28,24 +26,24 @@ public sealed class BotCommandHandler(IConversationRepository repository, IComma
         }
     }
 
-    private async Task<BotCommandExecutionResult> ReadAsync(ChatId chatId, Func<ConversationState, LlmText> format, CancellationToken cancellationToken)
+    private async Task<Result<string>> ReadAsync(long chatId, Func<ConversationState, string> format, CancellationToken cancellationToken)
     {
         var loaded = await repository.LoadAsync(chatId, cancellationToken);
-        if (loaded is ConversationResult<ConversationSnapshot>.Failure failure)
+        if (loaded is Result<ConversationSnapshot>.Failure failure)
         {
-            return new BotCommandExecutionResult.Failure(failure.Error);
+            return new Result<string>.Failure(failure.Error);
         }
 
-        return new BotCommandExecutionResult.Success(format(((ConversationResult<ConversationSnapshot>.Success)loaded).Value.State));
+        return new Result<string>.Success(format(((Result<ConversationSnapshot>.Success)loaded).Value.State));
     }
 
-    private BotCommandExecutionResult Format(ConversationResult<ConversationState> result, Func<ConversationState, LlmText> format)
+    private Result<string> Format(Result<ConversationState> result, Func<ConversationState, string> format)
     {
-        if (result is ConversationResult<ConversationState>.Failure failure)
+        if (result is Result<ConversationState>.Failure failure)
         {
-            return new BotCommandExecutionResult.Failure(failure.Error);
+            return new Result<string>.Failure(failure.Error);
         }
 
-        return new BotCommandExecutionResult.Success(format(((ConversationResult<ConversationState>.Success)result).Value));
+        return new Result<string>.Success(format(((Result<ConversationState>.Success)result).Value));
     }
 }

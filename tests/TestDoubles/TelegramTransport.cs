@@ -42,6 +42,7 @@ internal sealed class TelegramTransport : HttpMessageHandler
         {
             "getUpdates" => UpdatesJson,
             "deleteMessage" => "true",
+            "answerCallbackQuery" => "true",
             "getMe" => "{\"id\":123456789,\"is_bot\":true,\"first_name\":\"Test\",\"username\":\"test_bot\"}",
             "getWebhookInfo" => "{\"url\":" + System.Text.Json.JsonSerializer.Serialize(WebhookUrl) + ",\"has_custom_certificate\":false,\"pending_update_count\":0}",
             _ => "{\"message_id\":1,\"date\":0,\"chat\":{\"id\":42,\"type\":\"private\"},\"text\":\"ok\"}"

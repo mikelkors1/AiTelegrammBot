@@ -1,15 +1,13 @@
-using ItmoBot.Application.Contracts;
-using ItmoBot.Application.Models;
-using ItmoBot.Application.ResultTypes;
-using ItmoBot.Application.ValueObjects;
+using ItmoBot.Application.Llm;
 using ItmoBot.Shared.Errors;
+using ItmoBot.Validation;
 
 namespace ItmoBot.Tests.TestDoubles;
 
 internal sealed class FakeLlmClient : ILlmClient
 {
     public List<LlmRequest> Requests { get; } = [];
-    public LlmText Text { get; set; } = new("Ответ модели");
+    public string Text { get; set; } = RequestChecks.LlmText("Ответ модели");
     public AppError? Error
     {
         get; set;
@@ -37,7 +35,7 @@ internal sealed class FakeLlmClient : ILlmClient
             return new LlmCompletionResult.Failure(Error);
         }
 
-        return new LlmCompletionResult.Success(new LlmResponse(Text, new ModelName("qwen/qwen3.8-27b:free"), null, null));
+        return new LlmCompletionResult.Success(new LlmResponse(Text, RequestChecks.ModelName("qwen/qwen3.8-27b:free"), null, null));
     }
 
     public void Dispose()

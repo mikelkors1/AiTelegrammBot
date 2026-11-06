@@ -1,0 +1,460 @@
+{
+  "status": "incomplete_transport_failure",
+  "started_at": "2026-11-06T15:12:48.1260700\u002B00:00",
+  "dataset": "docs/evaluation/lab2-routing.json",
+  "dataset_sha256": "0A9C9F06F85E094AE42AAA3B684EA368B8F051055F5476ED676203E2A1AFDC98",
+  "evaluation_context": {
+    "now": "2026-10-12T09:00:00\u002B03:00",
+    "timezone": "Europe/Moscow"
+  },
+  "model": "nvidia/nemotron-3.5-super-vl:free",
+  "structured_output_mode": "ToolCompatibleJson",
+  "temperature": 0.0,
+  "max_output_tokens": 2048,
+  "context_token_limit": 32768,
+  "timeout_seconds": 60,
+  "mode": "study",
+  "prompt_version": "study-v4",
+  "scope": "First routing decision using production prompts, client and discovered MCP schemas. No tool execution or reminder writes.",
+  "tool_catalog": [
+    {
+      "Name": "get_schedule",
+      "Description": "\u0417\u0430\u043D\u044F\u0442\u0438\u044F \u043D\u0430 \u0443\u043A\u0430\u0437\u0430\u043D\u043D\u0443\u044E \u043A\u0430\u043B\u0435\u043D\u0434\u0430\u0440\u043D\u0443\u044E \u0434\u0430\u0442\u0443. date \u2014 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0430\u044F \u0434\u0430\u0442\u0430 YYYY-MM-DD. \u041F\u0443\u0441\u0442\u043E\u0439 \u0441\u043F\u0438\u0441\u043E\u043A \u043E\u0437\u043D\u0430\u0447\u0430\u0435\u0442 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0438\u0435 \u0437\u0430\u043D\u044F\u0442\u0438\u0439.",
+      "InputSchema": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "additionalProperties": false
+      },
+      "OutputSchema": {
+        "type": "object",
+        "$defs": {
+          "lesson": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+              },
+              "end": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "location": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "start",
+              "end",
+              "title",
+              "location"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "date": {
+                "type": "string",
+                "format": "date"
+              },
+              "timezone": {
+                "type": "string",
+                "minLength": 1
+              },
+              "lessons": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/lesson"
+                }
+              },
+              "source": {
+                "const": "repository_schedule"
+              }
+            },
+            "required": [
+              "date",
+              "timezone",
+              "lessons",
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "error"
+              },
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "invalid_arguments",
+                      "source_unavailable"
+                    ]
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "status",
+              "error"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ReadOnlyHint": true
+    },
+    {
+      "Name": "get_weather",
+      "Description": "\u0422\u0435\u043A\u0443\u0449\u0430\u044F \u043F\u043E\u0433\u043E\u0434\u0430 \u0432 \u0433\u043E\u0440\u043E\u0434\u0435 \u043F\u043E Open-Meteo, \u043D\u0435 \u043F\u0440\u043E\u0433\u043D\u043E\u0437 \u043D\u0430 \u0432\u0435\u0441\u044C \u0434\u0435\u043D\u044C. city \u2014 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0433\u043E\u0440\u043E\u0434\u0430, \u043F\u0440\u0438 \u043D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u043E\u0441\u0442\u0438 \u0441\u043E \u0441\u0442\u0440\u0430\u043D\u043E\u0439/\u043E\u0431\u043B\u0430\u0441\u0442\u044C\u044E \u0447\u0435\u0440\u0435\u0437 \u0437\u0430\u043F\u044F\u0442\u0443\u044E. \u041F\u0440\u0438 ambiguous \u043F\u043E\u043F\u0440\u043E\u0441\u0438\u0442\u0435 \u0443\u0442\u043E\u0447\u043D\u0435\u043D\u0438\u0435, \u043D\u0435 \u0432\u044B\u0431\u0438\u0440\u0430\u0439\u0442\u0435 \u043F\u0435\u0440\u0432\u044B\u0439 \u0432\u0430\u0440\u0438\u0430\u043D\u0442. weather_code \u2014 \u043A\u043E\u0434 \u0443\u0441\u043B\u043E\u0432\u0438\u0439 WMO.",
+      "InputSchema": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "city"
+        ],
+        "additionalProperties": false
+      },
+      "OutputSchema": {
+        "type": "object",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "ok"
+              },
+              "city": {
+                "type": "string",
+                "minLength": 1
+              },
+              "country": {
+                "type": "string",
+                "minLength": 1
+              },
+              "temperature_c": {
+                "type": "number",
+                "minimum": -273.15
+              },
+              "weather_code": {
+                "type": "integer",
+                "enum": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  45,
+                  48,
+                  51,
+                  53,
+                  55,
+                  56,
+                  57,
+                  61,
+                  63,
+                  65,
+                  66,
+                  67,
+                  71,
+                  73,
+                  75,
+                  77,
+                  80,
+                  81,
+                  82,
+                  85,
+                  86,
+                  95,
+                  96,
+                  97,
+                  99
+                ]
+              },
+              "wind_speed": {
+                "type": "number",
+                "minimum": 0
+              },
+              "wind_unit": {
+                "const": "km/h"
+              },
+              "observed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "timezone": {
+                "type": "string",
+                "minLength": 1
+              },
+              "source": {
+                "const": "open_meteo"
+              }
+            },
+            "required": [
+              "status",
+              "city",
+              "country",
+              "temperature_c",
+              "weather_code",
+              "wind_speed",
+              "wind_unit",
+              "observed_at",
+              "timezone",
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "not_found"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "ambiguous"
+              },
+              "candidates": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 100,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "country": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "country_code": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{2}$"
+                    },
+                    "admin1": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "city",
+                    "country",
+                    "country_code",
+                    "admin1"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "status",
+              "candidates"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "error"
+              },
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "invalid_arguments",
+                      "source_unavailable",
+                      "external_timeout",
+                      "invalid_external_response"
+                    ]
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "status",
+              "error"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ReadOnlyHint": true
+    },
+    {
+      "Name": "add_reminder",
+      "Description": "\u0414\u0432\u0443\u0445\u044D\u0442\u0430\u043F\u043D\u043E\u0435 \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u0435 \u043D\u0430\u043F\u043E\u043C\u0438\u043D\u0430\u043D\u0438\u044F. \u041A\u043E\u0433\u0434\u0430 \u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B \u0442\u0435\u043A\u0441\u0442, \u0431\u0443\u0434\u0443\u0449\u0435\u0435 \u0432\u0440\u0435\u043C\u044F \u0438 \u0447\u0430\u0441\u043E\u0432\u043E\u0439 \u043F\u043E\u044F\u0441,\n\u043C\u043E\u0434\u0435\u043B\u044C \u0441\u0440\u0430\u0437\u0443 \u043F\u0440\u0435\u0434\u043B\u0430\u0433\u0430\u0435\u0442 \u0432\u044B\u0437\u043E\u0432 add_reminder \u0441 text \u0438 remind_at \u2014 \u044D\u0442\u043E \u043F\u0440\u0435\u0434\u043B\u043E\u0436\u0435\u043D\u0438\u0435 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u0432,\n\u0434\u043B\u044F \u043D\u0435\u0433\u043E \u043F\u0440\u0435\u0434\u0432\u0430\u0440\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0435 \u0441\u043E\u0433\u043B\u0430\u0441\u0438\u0435 \u0442\u0435\u043A\u0441\u0442\u043E\u043C \u043D\u0435 \u043D\u0443\u0436\u043D\u043E. Telegram-\u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u0435 \u043F\u0435\u0440\u0435\u0445\u0432\u0430\u0442\u044B\u0432\u0430\u0435\u0442\n\u043F\u0440\u0435\u0434\u043B\u043E\u0436\u0435\u043D\u0438\u0435, \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442 \u043F\u043E\u0434\u0433\u043E\u0442\u043E\u0432\u043B\u0435\u043D\u043D\u043E\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u0438 \u043F\u043E\u043A\u0430\u0437\u044B\u0432\u0430\u0435\u0442 \u043A\u043D\u043E\u043F\u043A\u0438 \u00AB\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C\u00BB/\u00AB\u041E\u0442\u043C\u0435\u043D\u0438\u0442\u044C\u00BB.\n\u0421\u0430\u043C MCP-\u0441\u0435\u0440\u0432\u0435\u0440 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u0442 \u043D\u0430\u043F\u043E\u043C\u0438\u043D\u0430\u043D\u0438\u0435 \u0442\u043E\u043B\u044C\u043A\u043E \u043F\u043E\u0441\u043B\u0435 \u044F\u0432\u043D\u043E\u0433\u043E \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u043A\u043D\u043E\u043F\u043A\u043E\u0439;\n\u0431\u0435\u0437 \u0434\u043E\u0432\u0435\u0440\u0435\u043D\u043D\u043E\u0433\u043E \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u0430 \u0438 \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u043E\u0433\u043E \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435 \u0437\u0430\u043F\u0440\u0435\u0449\u0435\u043D\u043E.\ntext \u2014 \u0442\u0435\u043A\u0441\u0442 1\u2013500 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432; remind_at \u2014 \u0431\u0443\u0434\u0443\u0449\u0435\u0435 ISO 8601 \u0432\u0440\u0435\u043C\u044F \u0441 \u044F\u0432\u043D\u044B\u043C \u0441\u043C\u0435\u0449\u0435\u043D\u0438\u0435\u043C \u0438\u043B\u0438 Z.\n\u0412\u043B\u0430\u0434\u0435\u043B\u0435\u0446 \u0438 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u0435 \u043F\u0435\u0440\u0435\u0434\u0430\u044E\u0442\u0441\u044F \u0434\u043E\u0432\u0435\u0440\u0435\u043D\u043D\u044B\u043C \u043A\u043B\u0438\u0435\u043D\u0442\u043E\u043C \u0432\u043D\u0435 \u0430\u0440\u0433\u0443\u043C\u0435\u043D\u0442\u043E\u0432 \u043C\u043E\u0434\u0435\u043B\u0438.\n\u041F\u043E\u0432\u0442\u043E\u0440 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D\u043D\u043E\u0433\u043E \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0432\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442 \u043F\u0440\u0435\u0436\u043D\u0438\u0439 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442.",
+      "InputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "remind_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "text",
+          "remind_at"
+        ],
+        "additionalProperties": false
+      },
+      "OutputSchema": {
+        "type": "object",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "reminder_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "remind_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "timezone": {
+                "type": "string",
+                "minLength": 1
+              },
+              "created": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "reminder_id",
+              "remind_at",
+              "timezone",
+              "created"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "error"
+              },
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "invalid_arguments",
+                      "unauthorized",
+                      "action_not_confirmed",
+                      "action_expired",
+                      "action_cancelled",
+                      "action_mismatch",
+                      "storage_unavailable"
+                    ]
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message",
+                  "retryable"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "status",
+              "error"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ReadOnlyHint": false
+    }
+  ],
+  "cases": [
+    {
+      "id": "weather_1",
+      "query": "\u041A\u0430\u043A\u0430\u044F \u0441\u0435\u0439\u0447\u0430\u0441 \u043F\u043E\u0433\u043E\u0434\u0430 \u0432 \u0421\u0430\u043D\u043A\u0442-\u041F\u0435\u0442\u0435\u0440\u0431\u0443\u0440\u0433\u0435?",
+      "expected_action": "get_weather",
+      "expected_arguments": {
+        "city": "\u0421\u0430\u043D\u043A\u0442-\u041F\u0435\u0442\u0435\u0440\u0431\u0443\u0440\u0433"
+      },
+      "transport_error": "InvalidArgument"
+    }
+  ]
+}

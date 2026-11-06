@@ -2,27 +2,28 @@ using System.Collections;
 using System.Security.Cryptography;
 using System.Text;
 using ItmoBot.Configuration.Contracts;
-using ItmoBot.Tools.Contracts;
-using ItmoBot.Configuration.ResultTypes;
+using ItmoBot.Configuration.Loading;
+using ItmoBot.Configuration.Models;
 using ItmoBot.Shared.Errors;
-using ItmoBot.Tools.ResultTypes;
+using ItmoBot.Shared.Results;
+using ItmoBot.Tools.Contracts;
 
 namespace ItmoBot.Tools;
 
 public sealed class EnvironmentPreparer(
     IEnvironmentFileReader environmentFileReader,
-    ISettingsLoader settingsLoader,
-    ISecretConsoleInput secretInput) : IEnvironmentPreparer
+    SettingsLoader settingsLoader,
+    ISecretConsoleInput secretInput)
 {
-    public EnvironmentPreparationResult Prepare(string path = ".env")
+    public Result Prepare(string path = ".env")
     {
-        var read = environmentFileReader.Read(path);
-        if (read is EnvironmentReadResult.Failure readFailure)
+        Result<IReadOnlyDictionary<string, string>> read = environmentFileReader.Read(path);
+        if (read is Result<IReadOnlyDictionary<string, string>>.Failure readFailure)
         {
-            return new EnvironmentPreparationResult.Failure(readFailure.Error);
+            return new Result.Failure(readFailure.Error);
         }
 
-        var values = ((EnvironmentReadResult.Success)read).Values;
+        var values = ((Result<IReadOnlyDictionary<string, string>>.Success)read).Value;
         var additions = new Dictionary<string, string>();
         string Value(string key)
         {
@@ -38,7 +39,13 @@ public sealed class EnvironmentPreparer(
             ["LOG_LEVEL"] = "INFO",
             ["HEALTH_PORT"] = "8080",
             ["LLM_API_BASE_URL"] = "https://openrouter.ai/api/v1/",
-            ["LLM_MODEL"] = "qwen/qwen3.8-27b:free",
+            ["LLM_MODEL"] = "nvidia/nemotron-3.5-super-vl:free",
+            ["LLM_STRUCTURED_OUTPUT_MODE"] = Value("LLM_MODEL") switch
+            {
+                "" or "nvidia/nemotron-3.5-super-vl:free" => "tool_compatible_json",
+                "google/gemma-4-26b-a4b-it:free" => "json_object",
+                _ => "json_schema",
+            },
             ["LLM_RETRY_WINDOW_SECONDS"] = "300",
         };
         foreach (var (key, fallback) in defaults)
@@ -80,10 +87,10 @@ public sealed class EnvironmentPreparer(
             merged[entry.Key] = entry.Value;
         }
 
-        var loaded = settingsLoader.Load(path, merged);
-        if (loaded is SettingsLoadResult.Failure settingsFailure)
+        Result<Settings> loaded = settingsLoader.Load(path, merged);
+        if (loaded is Result<Settings>.Failure settingsFailure)
         {
-            return new EnvironmentPreparationResult.Failure(settingsFailure.Error);
+            return new Result.Failure(settingsFailure.Error);
         }
 
         try
@@ -94,7 +101,7 @@ public sealed class EnvironmentPreparer(
                 var quote = value.Contains('\'') ? '"' : '\'';
                 if (value.Contains(quote) || value.Contains('\n') || value.Contains('\r'))
                 {
-                    return new EnvironmentPreparationResult.Failure(new AppError(
+                    return new Result.Failure(new AppError(
                         ErrorCode.EnvironmentFileInvalid, "ENV: значение содержит неподдерживаемые кавычки или перевод строки."));
                 }
 
@@ -115,11 +122,11 @@ public sealed class EnvironmentPreparer(
 
             file.SetLength(0);
             file.Write(Encoding.UTF8.GetBytes(content));
-            return new EnvironmentPreparationResult.Success();
+            return new Result.Success();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return new EnvironmentPreparationResult.Failure(new AppError(
+            return new Result.Failure(new AppError(
                 ErrorCode.EnvironmentFileUnavailable, "Не удалось сохранить env-файл. Проверьте права доступа к каталогу проекта."));
         }
     }

@@ -1,16 +1,16 @@
 using ItmoBot.Configuration.Contracts;
-using ItmoBot.Configuration.ResultTypes;
+using ItmoBot.Shared.Results;
 
 namespace ItmoBot.Tests.TestDoubles;
 
-internal sealed class FakeEnvironmentFileReader(EnvironmentReadResult result) : IEnvironmentFileReader
+internal sealed class FakeEnvironmentFileReader(Result<IReadOnlyDictionary<string, string>> result) : IEnvironmentFileReader
 {
     public int ReadCalls
     {
         get; private set;
     }
 
-    public EnvironmentReadResult Read(string path)
+    public Result<IReadOnlyDictionary<string, string>> Read(string path)
     {
         ReadCalls++;
         return result;

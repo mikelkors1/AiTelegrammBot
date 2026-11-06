@@ -1,0 +1,68 @@
+{
+  "run_at": "2026-11-02T09:32:35.156052+00:00",
+  "model": "nvidia/nemotron-3.5-super-vl:free",
+  "output_mode": "ToolCompatibleJson",
+  "scope": "real LLM, MCP, weather HTTP and isolated PostgreSQL; no Telegram transport; not the routing experiment",
+  "checks": [
+    {
+      "id": "isolated_migrations",
+      "pass": true,
+      "detail": "dedicated temporary PostgreSQL only"
+    },
+    {
+      "id": "mcp_discovery",
+      "pass": true,
+      "detail": "3 tools, 1 resource"
+    },
+    {
+      "id": "tools_command",
+      "pass": true,
+      "detail": "discovered catalog exposed by command"
+    },
+    {
+      "id": "schedule",
+      "pass": true,
+      "detail": "result=Success; action=ToolCall; tool=get_schedule; audit=Succeeded; seconds=5.0"
+    },
+    {
+      "id": "schedule_why",
+      "pass": true,
+      "detail": "safe audit command"
+    },
+    {
+      "id": "weather",
+      "pass": true,
+      "detail": "result=Success; action=ToolCall; tool=get_weather; audit=Succeeded; seconds=4.5"
+    },
+    {
+      "id": "weather_why",
+      "pass": true,
+      "detail": "safe audit command"
+    },
+    {
+      "id": "clarify_reminder",
+      "pass": true,
+      "detail": "result=Success; action=Clarify; tool=; audit=Succeeded; seconds=2.1"
+    },
+    {
+      "id": "clarify_reminder_why",
+      "pass": true,
+      "detail": "safe audit command"
+    },
+    {
+      "id": "prepare_reminder",
+      "pass": false,
+      "detail": "result=Success; action=Respond; tool=; audit=Succeeded; seconds=2.1"
+    },
+    {
+      "id": "prepare_reminder_why",
+      "pass": true,
+      "detail": "safe audit command"
+    },
+    {
+      "id": "no_write_before_confirmation",
+      "pass": true,
+      "detail": "reminders table count=0"
+    }
+  ]
+}
